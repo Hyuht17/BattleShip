@@ -196,11 +196,12 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
-httpServer.listen(NODE_SERVER_PORT, '0.0.0.0', () => {
+// Start server - Only listen on localhost (not LAN)
+// Chỉ listen localhost, không public ra LAN
+httpServer.listen(NODE_SERVER_PORT, 'localhost', () => {
   console.log(`✅ Node.js server listening on:`);
   console.log(`   - Local: http://localhost:${NODE_SERVER_PORT}`);
-  console.log(`   - LAN:   http://${LOCAL_IP}:${NODE_SERVER_PORT}`);
+  console.log(`   📡 Connecting to C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
 });
 
 // Graceful shutdown
