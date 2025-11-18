@@ -4,8 +4,7 @@ import './App.css';
 import LoginScreen from './components/LoginScreen';
 import LobbyScreen from './components/LobbyScreen';
 import GameScreen from './components/GameScreen';
-
-const SOCKET_SERVER_URL = 'http://localhost:3000';
+import { SOCKET_SERVER_URL } from './config';
 
 function App() {
   const [screen, setScreen] = useState('login'); // 'login', 'lobby', 'game'
@@ -15,6 +14,8 @@ function App() {
   const socketRef = useRef(null);
 
   useEffect(() => {
+    console.log('🌐 Connecting to:', SOCKET_SERVER_URL);
+    
     // Initialize socket connection
     socketRef.current = io(SOCKET_SERVER_URL, {
       transports: ['websocket', 'polling'],

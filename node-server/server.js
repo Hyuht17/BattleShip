@@ -1,41 +1,56 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const net = require('net');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import net from 'net';
+import cors from 'cors';
+import os from 'os';
 
 const app = express();
 const httpServer = http.createServer(app);
+
+// ✅ Lấy IP của server trong LAN
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const devName in interfaces) {
+    const iface = interfaces[devName];
+    for (let i = 0; i < iface.length; i++) {
+      const alias = iface[i];
+      if (alias.family === 'IPv4' && !alias.internal) {
+        return alias.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+const LOCAL_IP = getLocalIP();
+console.log(`🌐 Server LAN IP: ${LOCAL_IP}`);
+
+// CORS: Cho phép browsers từ mọi IP kết nối WebSocket đến Node.js
+// Node.js server chỉ kết nối đến 1 C++ server (qua CPP_SERVER_HOST)
+// Không có kết nối giữa các Node.js servers với nhau
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      "http://localhost:5173",     // Vite frontend
-      "http://127.0.0.1:5173",     // Vite alternative
-      "http://localhost:5500",     // Live Server
-      "http://127.0.0.1:5500",     // Live Server alternative
-      "http://localhost:3001",     // Development
-      "null"                       // For file:// protocol
-    ],
+    origin: true,  // Cho phép tất cả origins (dev mode)
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5500",
-    "http://127.0.0.1:5500",
-    "http://localhost:3001"
-  ],
+  origin: true,  // Cho phép tất cả (dev mode)
   credentials: true
 }));
 app.use(express.json());
 
-const CPP_SERVER_HOST = 'localhost';
-const CPP_SERVER_PORT = 8080;
-const NODE_SERVER_PORT = 3000;
+// C++ Server configuration
+// Nếu Node.js và C++ server cùng máy: dùng 'localhost'
+// Nếu C++ server ở máy khác trong LAN: thay 'localhost' bằng IP (ví dụ: '192.168.1.100')
+const CPP_SERVER_HOST = process.env.CPP_SERVER_HOST || 'localhost';
+const CPP_SERVER_PORT = parseInt(process.env.CPP_SERVER_PORT || '8080');
+const NODE_SERVER_PORT = parseInt(process.env.NODE_SERVER_PORT || '3000');
+
+console.log(`📡 C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
 
 // Store active connections
 const connections = new Map();
@@ -47,10 +62,14 @@ app.get('/health', (req, res) => {
 });
 
 // Socket.IO connection handling
+// MỖI CLIENT tạo 1 WebSocket connection đến Node.js
+// Node.js tạo 1 TCP connection tương ứng đến C++ server
+// Clients KHÔNG kết nối với nhau, chỉ kết nối đến C++ server qua Node.js
 io.on('connection', (socket) => {
-  console.log(`[${new Date().toISOString()}] Client connected: ${socket.id}`);
+  console.log(`[${new Date().toISOString()}] Client ${socket.id} connected from ${socket.handshake.address}`);
 
-  // Create TCP connection to C++ server
+  // Create DEDICATED TCP connection to C++ server for THIS client
+  // Mỗi client có 1 TCP connection riêng đến C++ server
   const cppClient = new net.Socket();
   connections.set(socket.id, cppClient);
   messageBuffers.set(socket.id, '');
@@ -58,7 +77,8 @@ io.on('connection', (socket) => {
   // Set keepalive to detect disconnections
   cppClient.setKeepAlive(true, 5000);
   
-  // Connect to C++ server
+  // Connect to C++ server (all clients connect to SAME C++ server)
+  // Tất cả clients đều kết nối đến CÙNG 1 C++ server
   cppClient.connect(CPP_SERVER_PORT, CPP_SERVER_HOST, () => {
     console.log(`[${new Date().toISOString()}] TCP connected to C++ server for client ${socket.id}`);
     socket.emit('server-connected', { message: 'Connected to game server' });
@@ -177,13 +197,10 @@ io.on('connection', (socket) => {
 });
 
 // Start server
-httpServer.listen(NODE_SERVER_PORT, () => {
-  console.log('╔═══════════════════════════════════════╗');
-  console.log('║   BattleShip Node.js Server Started! ║');
-  console.log(`║   Port: ${NODE_SERVER_PORT}                           ║`);
-  console.log(`║   C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}           ║`);
-  console.log('╚═══════════════════════════════════════╝');
-  console.log(`Frontend URL: http://localhost:5173`);
+httpServer.listen(NODE_SERVER_PORT, '0.0.0.0', () => {
+  console.log(`✅ Node.js server listening on:`);
+  console.log(`   - Local: http://localhost:${NODE_SERVER_PORT}`);
+  console.log(`   - LAN:   http://${LOCAL_IP}:${NODE_SERVER_PORT}`);
 });
 
 // Graceful shutdown

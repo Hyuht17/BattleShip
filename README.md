@@ -22,20 +22,68 @@
 ## 🏗️ Kiến trúc
 
 ```
-┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│                 │         │                 │         │                 │
-│  React Frontend │◄───────►│  Node.js Server │◄───────►│   C++ Server    │
-│   (Port 5173)   │ WebSocket│   (Port 3000)   │  TCP/IP │   (Port 8080)   │
-│                 │         │                 │         │                 │
-└─────────────────┘         └─────────────────┘         └─────────────────┘
-      UI/UX                    Middleware              Game Logic/Storage
+┌─────────────┐    ┌─────────────┐           ┌──────────────┐           ┌─────────────┐
+│  Client 1   │    │  Client 2   │           │   Client N   │           │             │
+│  (Browser)  │    │  (Browser)  │    ...    │  (Browser)   │           │             │
+└──────┬──────┘    └──────┬──────┘           └──────┬───────┘           │             │
+       │                  │                         │                    │             │
+       └──────────────────┴─────────────────────────┘                    │   Storage   │
+                          │ WebSocket                                    │  (File DB)  │
+                          │                                              │             │
+              ┌───────────▼────────────┐                                 │             │
+              │   Node.js Middleware   │                                 │             │
+              │      (Port 3000)       │                                 │             │
+              │  • CORS handling       │                                 │             │
+              │  • WebSocket ↔ TCP     │                                 │             │
+              │  • No game logic       │                                 │             │
+              └───────────┬────────────┘                                 │             │
+                          │ TCP Socket                                   │             │
+                          │                                              │             │
+              ┌───────────▼────────────┐                                 │             │
+              │   C++ Game Server      │◄────────────────────────────────┤             │
+              │      (Port 8080)       │                                 │             │
+              │  • Authentication      │                                 │             │
+              │  • Game matching       │                                 │             │
+              │  • Move validation     │                                 └─────────────┘
+              │  • Win condition       │
+              │  • All game logic      │
+              └────────────────────────┘
 ```
+
+### Vai trò từng thành phần:
+
+| Thành phần | Vai trò | Công nghệ | Port |
+|------------|---------|-----------|------|
+| **C++ Server** | ⚙️ Core game engine - Xử lý toàn bộ logic game | C++11, POSIX Sockets, pthread | 8080 |
+| **Node.js Middleware** | 🔄 Protocol converter - Chỉ chuyển đổi WebSocket ↔ TCP | Node.js, Express, Socket.IO | 3000 |
+| **React Frontend** | 🎨 User interface - Hiển thị và tương tác | React 19, Vite, CSS3 | 5173 |
 
 ### Thành phần chính:
 
 1. **C++ TCP Server** - Core game logic, authentication, state management
-2. **Node.js Middleware** - WebSocket ↔ TCP bridge, message routing
+2. **Node.js Middleware** - WebSocket ↔ TCP bridge, message routing (no business logic)
 3. **React Frontend** - Modern UI with real-time updates
+
+## 📡 Deployment Options
+
+### Tùy chọn 1: Tất cả trên 1 máy (Development)
+```bash
+./start-all.sh
+# hoặc
+./start-multi.sh all
+```
+
+### Tùy chọn 2: Multi-machine LAN Setup
+```bash
+# Máy 1: C++ Server
+./start-multi.sh cpp
+
+# Máy 2: Node.js + Frontend
+./start-multi.sh nodejs
+./start-multi.sh frontend
+```
+
+📚 **Chi tiết:** Xem [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 ## ⚡ Quick Start
 
@@ -150,6 +198,74 @@ BattleShip/
 - [x] Smooth animations
 - [x] Error handling
 - [x] Message buffering
+- [x] **LAN multiplayer support** 🌐
+- [x] **Multi-machine deployment** 🖥️
+
+## 🌐 LAN & Multi-Machine Setup
+
+### Quick LAN Setup (Tất cả máy cùng mạng WiFi)
+
+```bash
+# Trên máy server
+./start-lan.sh
+
+# Output sẽ hiển thị IP, ví dụ: 192.168.1.100
+# Các máy khác truy cập: http://192.168.1.100:5173
+```
+
+### Advanced Multi-Machine Setup
+
+#### Kịch bản 1: Máy backend + Máy client
+
+```bash
+# Máy 1 (Backend): Chạy C++ + Node.js
+./start-multi.sh cpp-nodejs
+
+# Máy 2 (Client): Mở browser
+# Truy cập: http://[IP_MÁY_1]:5173
+```
+
+#### Kịch bản 2: Mỗi service 1 máy riêng
+
+```bash
+# Máy 1: C++ Server only
+./start-multi.sh cpp
+
+# Máy 2: Node.js Middleware
+# Tạo file .env: echo 'CPP_SERVER_HOST=192.168.1.100' > node-server/.env
+./start-multi.sh nodejs
+
+# Máy 3: Frontend
+./start-multi.sh frontend
+
+# Clients: Truy cập http://[IP_MÁY_2]:5173
+```
+
+#### Test kết nối
+
+```bash
+./test-connections.sh
+```
+
+📚 **Hướng dẫn chi tiết:** 
+- [LAN_SETUP.md](LAN_SETUP.md) - Cấu hình LAN đơn giản
+- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - Triển khai multi-machine chuyên sâu
+
+## 🔧 Configuration
+
+### Node.js Server (.env)
+```bash
+CPP_SERVER_HOST=localhost    # IP của C++ server
+CPP_SERVER_PORT=8080          # Port của C++ server
+NODE_SERVER_PORT=3000         # Port của Node.js
+```
+
+### Firewall (nếu cần)
+```bash
+sudo ufw allow 8080/tcp   # C++ Server
+sudo ufw allow 3000/tcp   # Node.js
+sudo ufw allow 5173/tcp   # Frontend
+```
 
 ## 🛠️ Công nghệ
 
