@@ -79,8 +79,10 @@ io.on('connection', (socket) => {
   
   // Connect to C++ server (all clients connect to SAME C++ server)
   // Tất cả clients đều kết nối đến CÙNG 1 C++ server
+  console.log(`[${new Date().toISOString()}] Attempting TCP connection to ${CPP_SERVER_HOST}:${CPP_SERVER_PORT} for client ${socket.id}`);
+  
   cppClient.connect(CPP_SERVER_PORT, CPP_SERVER_HOST, () => {
-    console.log(`[${new Date().toISOString()}] TCP connected to C++ server for client ${socket.id}`);
+    console.log(`[${new Date().toISOString()}] ✅ TCP connected to C++ server for client ${socket.id}`);
     socket.emit('server-connected', { message: 'Connected to game server' });
   });
 
@@ -115,7 +117,10 @@ io.on('connection', (socket) => {
 
   // Handle C++ server errors
   cppClient.on('error', (err) => {
-    console.error(`[${new Date().toISOString()}] C++ server error for client ${socket.id}:`, err.message);
+    console.error(`[${new Date().toISOString()}] ❌ C++ server error for client ${socket.id}:`);
+    console.error(`   Error code: ${err.code}`);
+    console.error(`   Error message: ${err.message}`);
+    console.error(`   Tried to connect to: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
     socket.emit('server-error', { error: err.message });
   });
 
