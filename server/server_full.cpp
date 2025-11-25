@@ -370,11 +370,15 @@ void handle_place_ships(Client *client, const char *ships_data) {
     while (*ptr) {
         if (*ptr == '{') {
             char name[30];
+            char horizontal_str[10];
             int size, row, col, horizontal;
             
-            // Extract ship data (simplified)
-            if (sscanf(ptr, "{\"name\":\"%[^\"]\",\"size\":%d,\"row\":%d,\"col\":%d,\"horizontal\":%d", 
-                      name, &size, &row, &col, &horizontal) == 5) {
+            // Extract ship data - parse horizontal as string first
+            if (sscanf(ptr, "{\"name\":\"%[^\"]\",\"size\":%d,\"row\":%d,\"col\":%d,\"horizontal\":%[^,}]", 
+                      name, &size, &row, &col, horizontal_str) == 5) {
+                
+                // Convert "true"/"false" string to int
+                horizontal = (strstr(horizontal_str, "true") != NULL) ? 1 : 0;
                 
                 if (client->board.ship_count < MAX_SHIPS && 
                     row >= 0 && row < GRID_SIZE && 
@@ -414,9 +418,6 @@ void handle_place_ships(Client *client, const char *ships_data) {
     if (opponent && opponent->ready) {
         // Both ready, start game
         char message[BUFFER_SIZE];
-        sprintf(message, "{\"cmd\":\"GAME_READY\",\"payload\":{\"message\":\"Game starting!\"}}\n");
-        send_message(client->sock, message);
-        send_message(opponent->sock, message);
         
         // Find game session and update status
         pthread_mutex_lock(&games_mutex);
@@ -426,6 +427,21 @@ void handle_place_ships(Client *client, const char *ships_data) {
                  (game_sessions[i]->player2_sock == client->sock && game_sessions[i]->player1_sock == opponent->sock))) {
                 game_sessions[i]->status = GAME_PLAYING;
                 game_sessions[i]->current_turn = game_sessions[i]->player1_sock;
+                
+                // Set turn flags correctly
+                Client *p1 = get_client(game_sessions[i]->player1_sock);
+                Client *p2 = get_client(game_sessions[i]->player2_sock);
+                if (p1 && p2) {
+                    p1->is_turn = 1;
+                    p2->is_turn = 0;
+                    
+                    // Notify both players
+                    sprintf(message, "{\"cmd\":\"GAME_READY\",\"payload\":{\"message\":\"Game starting!\",\"your_turn\":true}}\n");
+                    send_message(p1->sock, message);
+                    
+                    sprintf(message, "{\"cmd\":\"GAME_READY\",\"payload\":{\"message\":\"Game starting!\",\"your_turn\":false}}\n");
+                    send_message(p2->sock, message);
+                }
                 break;
             }
         }
@@ -438,6 +454,31 @@ void handle_place_ships(Client *client, const char *ships_data) {
 }
 
 void handle_move(Client *client, const char *coord) {
+    // Check if client has placed ships
+    if (!client->ready || client->board.total_ship_cells == 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"You haven't placed your ships yet\"}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    Client *opponent = get_client(client->in_game_with);
+    if (!opponent) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":404,\"message\":\"Opponent not found\"}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    // Check if opponent has placed ships
+    if (!opponent->ready || opponent->board.total_ship_cells == 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"Opponent hasn't placed ships yet\"}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    // Check if it's the player's turn
     if (!client->is_turn) {
         char response[BUFFER_SIZE];
         sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"Not your turn\"}}\n");
@@ -452,22 +493,6 @@ void handle_move(Client *client, const char *coord) {
     if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) {
         char response[BUFFER_SIZE];
         sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"Invalid coordinate\"}}\n");
-        send_message(client->sock, response);
-        return;
-    }
-    
-    Client *opponent = get_client(client->in_game_with);
-    if (!opponent) {
-        char response[BUFFER_SIZE];
-        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":404,\"message\":\"Opponent not found\"}}\n");
-        send_message(client->sock, response);
-        return;
-    }
-    
-    // Check if opponent has placed ships
-    if (opponent->board.total_ship_cells == 0) {
-        char response[BUFFER_SIZE];
-        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"Opponent hasn't placed ships yet\"}}\n");
         send_message(client->sock, response);
         return;
     }

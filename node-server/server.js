@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -46,9 +47,9 @@ app.use(express.json());
 // C++ Server configuration
 // Nếu Node.js và C++ server cùng máy: dùng 'localhost'
 // Nếu C++ server ở máy khác trong LAN: thay 'localhost' bằng IP (ví dụ: '192.168.1.100')
-const CPP_SERVER_HOST = process.env.CPP_SERVER_HOST || 'localhost';
-const CPP_SERVER_PORT = parseInt(process.env.CPP_SERVER_PORT || '8080');
-const NODE_SERVER_PORT = parseInt(process.env.NODE_SERVER_PORT || '3000');
+const CPP_SERVER_HOST = process.env.CPP_SERVER_HOST;
+const CPP_SERVER_PORT = parseInt(process.env.CPP_SERVER_PORT);
+const NODE_SERVER_PORT = parseInt(process.env.NODE_SERVER_PORT);
 
 console.log(`📡 C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
 
@@ -75,7 +76,7 @@ io.on('connection', (socket) => {
   messageBuffers.set(socket.id, '');
 
   // Set keepalive to detect disconnections
-  cppClient.setKeepAlive(true, 5000);
+  cppClient.setKeepAlive(true, parseInt(process.env.KEEP_ALIVE_TIMEOUT));
   
   // Connect to C++ server (all clients connect to SAME C++ server)
   // Tất cả clients đều kết nối đến CÙNG 1 C++ server
