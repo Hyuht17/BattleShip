@@ -10,15 +10,23 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
 
   useEffect(() => {
     if (socket) {
-      socket.on('server-message', (data) => {
+      const handleChatMessage = (data) => {
         if (data.cmd === 'CHAT') {
+          console.log('[CHAT RECEIVED]', data.payload);
           setChatMessages(prev => [...prev, {
             from: data.payload.from,
             message: data.payload.message,
             timestamp: new Date().toLocaleTimeString()
           }]);
         }
-      });
+      };
+
+      socket.on('server-message', handleChatMessage);
+
+      // Cleanup function to remove listener when component unmounts
+      return () => {
+        socket.off('server-message', handleChatMessage);
+      };
     }
   }, [socket]);
 
@@ -66,6 +74,7 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
   };
 
   const handleSendChat = (message) => {
+    console.log('[CHAT SEND]', message, 'from', user.username);
     sendMessage({
       cmd: 'CHAT',
       payload: { message }
@@ -76,6 +85,25 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
       message,
       timestamp: new Date().toLocaleTimeString()
     }]);
+  };
+
+  const handleSurrender = () => {
+    if (window.confirm('Bạn có chắc muốn đầu hàng?')) {
+      console.log('[SURRENDER] Sending surrender command');
+      sendMessage({
+        cmd: 'SURRENDER',
+        payload: {}
+      });
+    }
+  };
+
+  const handleDrawOffer = () => {
+    console.log('[DRAW_OFFER] Sending draw offer');
+    sendMessage({
+      cmd: 'DRAW_OFFER',
+      payload: {}
+    });
+    alert('Đã gửi đề nghị hòa tới đối thủ');
   };
 
   return (
@@ -94,6 +122,15 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
         <ShipPlacement onPlaceShips={handlePlaceShips} />
       ) : (
         <div className="game-content">
+          <div className="game-actions">
+            <button className="surrender-btn" onClick={handleSurrender}>
+              🏳️ Đầu hàng
+            </button>
+            <button className="draw-btn" onClick={handleDrawOffer}>
+              🤝 Đề nghị hòa
+            </button>
+          </div>
+
           <div className="boards-container">
             <div className="board-section">
               <h3>Your Board</h3>

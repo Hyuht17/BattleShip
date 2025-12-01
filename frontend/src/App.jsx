@@ -11,7 +11,11 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [user, setUser] = useState(null);
   const [gameState, setGameState] = useState(null);
+  const [challengeRequest, setChallengeRequest] = useState(null); // {challenger: string}
+  const [gameResult, setGameResult] = useState(null); // {result: 'WIN'|'LOSE', reason: string, opponent: string}
+  const [drawRequest, setDrawRequest] = useState(null); // {from: username}
   const socketRef = useRef(null);
+  const opponentRef = useRef(null); // Store opponent name to avoid stale closure
 
   useEffect(() => {
     console.log('🌐 Connecting to:', SOCKET_SERVER_URL);
@@ -44,129 +48,147 @@ function App() {
       alert('Server error: ' + data.error);
     });
 
-    // Game events
-    socketRef.current.on('server-message', (data) => {
-      console.log('Message from server:', data);
-      handleServerMessage(data);
-    });
+    // Game events - Define handler inline to avoid stale closure
+    const handleMessage = (data) => {
+      const { cmd, payload } = data;
+
+      switch (cmd) {
+        case 'LOGIN_SUCCESS':
+          console.log('[LOGIN SUCCESS] User:', payload.username);
+          setUser({ username: payload.username });
+          setScreen('lobby');
+          break;
+
+        case 'REGISTER_SUCCESS':
+          console.log('[REGISTER SUCCESS]');
+          alert('Registration successful! Please login.');
+          break;
+
+        case 'GAME_START':
+          console.log('[GAME_START] Opponent:', payload.opponent, 'Your turn:', payload.your_turn);
+          opponentRef.current = payload.opponent; // Save opponent name
+          setGameState({
+            opponent: payload.opponent,
+            yourTurn: payload.your_turn,
+            phase: 'placing',
+            myBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
+            opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
+            myShips: [],
+            opponentShips: []
+          });
+          console.log('[GAME_START] Switching to game screen');
+          setScreen('game');
+          break;
+
+        case 'GAME_READY':
+          setGameState(prev => ({ ...prev, phase: 'playing' }));
+          break;
+
+        case 'MOVE_RESULT':
+          handleMoveResultInline(payload);
+          break;
+
+        case 'TURN_CHANGE':
+          setGameState(prev => ({ ...prev, yourTurn: payload.your_turn }));
+          break;
+
+        case 'GAME_END':
+          handleGameEndInline(payload);
+          break;
+
+        case 'CHALLENGE':
+          // Set challenge request to show custom modal
+          setChallengeRequest({
+            challenger: payload.challenger
+          });
+          
+          // Try to focus window and play notification sound
+          window.focus();
+          try {
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
+            audio.play().catch(() => {});
+          } catch (e) {}
+          break;
+
+        case 'SYSTEM_MSG':
+          if (payload.code !== 200) {
+            alert(payload.message);
+          }
+          break;
+
+        case 'DRAW_OFFER':
+          console.log('[DRAW_OFFER] Received from:', payload.from);
+          setDrawRequest({ from: payload.from });
+          break;
+
+        case 'DRAW_REJECTED':
+          console.log('[DRAW_REJECTED]');
+          alert('Đối thủ từ chối đề nghị hòa');
+          break;
+
+        default:
+          console.log('Unhandled command:', cmd, payload);
+      }
+    };
+
+    const handleMoveResultInline = (payload) => {
+      const { coord, result, ship_sunk } = payload;
+      const col = parseInt(coord.substring(1));
+      const row = coord.charCodeAt(0) - 65;
+
+      setGameState(prev => {
+        if (!prev) return prev;
+        const newState = { ...prev };
+        if (prev.yourTurn) {
+          newState.opponentBoard = prev.opponentBoard.map(r => [...r]);
+          newState.opponentBoard[row][col] = result === 'HIT' ? 2 : 3;
+        } else {
+          newState.myBoard = prev.myBoard.map(r => [...r]);
+          if (newState.myBoard[row][col] === 1) {
+            newState.myBoard[row][col] = 2;
+          }
+        }
+        return newState;
+      });
+
+      if (ship_sunk) {
+        alert(`${ship_sunk} was sunk!`);
+      }
+    };
+
+    const handleGameEndInline = (payload) => {
+      // Show game result modal instead of alert
+      const opponentName = opponentRef.current || 'Không rõ';
+      console.log('[GAME_END] Opponent name:', opponentName);
+      console.log('[GAME_END] Payload:', payload);
+      
+      let reason = payload.reason;
+      if (payload.reason === 'OPPONENT_DISCONNECT') {
+        reason = 'Đối thủ đã ngắt kết nối';
+      } else if (payload.reason === 'SURRENDER') {
+        reason = 'Đối thủ đã đầu hàng';
+      } else if (payload.reason === 'DRAW_ACCEPTED') {
+        reason = 'Hòa - Cả hai đồng ý';
+      }
+
+      setGameResult({
+        result: payload.result,
+        reason: reason,
+        opponent: opponentName
+      });
+    };
+
+    socketRef.current.on('server-message', handleMessage);
 
     return () => {
       if (socketRef.current) {
+        socketRef.current.off('server-message', handleMessage);
         socketRef.current.disconnect();
       }
     };
   }, []);
 
-  const handleServerMessage = (data) => {
-    console.log('[SERVER MESSAGE]', data);
-    const { cmd, payload } = data;
-
-    switch (cmd) {
-      case 'LOGIN_SUCCESS':
-        console.log('[LOGIN SUCCESS] User:', payload.username);
-        setUser({ username: payload.username });
-        setScreen('lobby');
-        break;
-
-      case 'REGISTER_SUCCESS':
-        console.log('[REGISTER SUCCESS]');
-        alert('Registration successful! Please login.');
-        break;
-
-      case 'GAME_START':
-        console.log('[GAME_START] Opponent:', payload.opponent, 'Your turn:', payload.your_turn);
-        setGameState({
-          opponent: payload.opponent,
-          yourTurn: payload.your_turn,
-          phase: 'placing',
-          myBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
-          opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
-          myShips: [],
-          opponentShips: []
-        });
-        console.log('[GAME_START] Switching to game screen');
-        setScreen('game');
-        break;
-
-      case 'GAME_READY':
-        setGameState(prev => ({ ...prev, phase: 'playing' }));
-        break;
-
-      case 'MOVE_RESULT':
-        handleMoveResult(payload);
-        break;
-
-      case 'TURN_CHANGE':
-        setGameState(prev => ({ ...prev, yourTurn: payload.your_turn }));
-        break;
-
-      case 'GAME_END':
-        handleGameEnd(payload);
-        break;
-
-      case 'CHALLENGE':
-        handleChallenge(payload);
-        break;
-
-      case 'SYSTEM_MSG':
-        if (payload.code !== 200) {
-          alert(payload.message);
-        }
-        break;
-
-      default:
-        console.log('Unhandled command:', cmd, payload);
-    }
-  };
-
-  const handleMoveResult = (payload) => {
-    const { coord, result, ship_sunk } = payload;
-    const col = parseInt(coord.substring(1));
-    const row = coord.charCodeAt(0) - 65;
-
-    setGameState(prev => {
-      const newState = { ...prev };
-      if (prev.yourTurn) {
-        // Update opponent board
-        newState.opponentBoard = prev.opponentBoard.map(r => [...r]);
-        newState.opponentBoard[row][col] = result === 'HIT' ? 2 : 3;
-      } else {
-        // Update my board
-        newState.myBoard = prev.myBoard.map(r => [...r]);
-        if (newState.myBoard[row][col] === 1) {
-          newState.myBoard[row][col] = 2; // hit
-        }
-      }
-      return newState;
-    });
-
-    if (ship_sunk) {
-      alert(`${ship_sunk} was sunk!`);
-    }
-  };
-
-  const handleGameEnd = (payload) => {
-    const message = payload.result === 'WIN' ? 
-      `You won! ${payload.reason}` : 
-      `You lost. ${payload.reason}`;
-    
-    alert(message);
-    setScreen('lobby');
-    setGameState(null);
-  };
-
-  const handleChallenge = (payload) => {
-    console.log('[CHALLENGE RECEIVED]', payload);
-    const accept = window.confirm(`${payload.challenger} challenges you to a game. Accept?`);
-    console.log('[CHALLENGE REPLY]', accept ? 'ACCEPT' : 'REJECT');
-    sendMessage({
-      cmd: 'CHALLENGE_REPLY',
-      payload: {
-        challenger_username: payload.challenger,
-        status: accept ? 'ACCEPT' : 'REJECT'
-      }
-    });
-  };
+  // These functions are no longer needed as they're defined inline in useEffect
 
   const sendMessage = (message) => {
     console.log('[SEND MESSAGE]', message, 'Connected:', connected, 'Socket:', !!socketRef.current);
@@ -196,6 +218,83 @@ function App() {
       cmd: 'REGISTER',
       payload: { username, password }
     });
+  };
+
+  const handleChallengeResponse = (accept) => {
+    if (!challengeRequest) return;
+    
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client-message', {
+        cmd: 'CHALLENGE_REPLY',
+        payload: {
+          challenger_username: challengeRequest.challenger,
+          status: accept ? 'ACCEPT' : 'REJECT'
+        }
+      });
+    }
+    
+    setChallengeRequest(null);
+  };
+
+  const handleDrawReply = (accept) => {
+    if (!drawRequest) return;
+    
+    console.log('[DRAW_REPLY] Sending:', accept ? 'accept' : 'reject');
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client-message', {
+        cmd: 'DRAW_REPLY',
+        payload: {
+          status: accept ? 'accept' : 'reject'
+        }
+      });
+    }
+    
+    setDrawRequest(null);
+  };
+
+  const handleRematch = () => {
+    if (!gameResult) return;
+    
+    console.log('[REMATCH] Sending challenge to:', gameResult.opponent);
+    
+    // Send challenge to the same opponent
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client-message', {
+        cmd: 'CHALLENGE',
+        payload: {
+          target_username: gameResult.opponent
+        }
+      });
+    }
+    
+    // Close result modal and return to lobby
+    setGameResult(null);
+    setScreen('lobby');
+    setGameState(null);
+    
+    // Request player list when returning to lobby for rematch
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('[REMATCH] Requesting player list');
+      socketRef.current.emit('client-message', {
+        cmd: 'PLAYER_LIST',
+        payload: {}
+      });
+    }
+  };
+
+  const handleBackToLobby = () => {
+    setGameResult(null);
+    setScreen('lobby');
+    setGameState(null);
+    
+    // Request player list when returning to lobby
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('[BACK_TO_LOBBY] Requesting player list');
+      socketRef.current.emit('client-message', {
+        cmd: 'PLAYER_LIST',
+        payload: {}
+      });
+    }
   };
 
   return (
@@ -239,6 +338,80 @@ function App() {
       <footer className="app-footer">
         <p>Đồ án Lập trình mạng - BattleShip Game</p>
       </footer>
+
+      {/* Draw offer modal - Highest priority */}
+      {drawRequest && (
+        <div className="modal-overlay">
+          <div className="draw-modal">
+            <h3>🤝 Đề nghị hòa</h3>
+            <p><strong>{drawRequest.from}</strong> muốn hòa trận đấu này</p>
+            <div className="modal-actions">
+              <button className="accept-btn" onClick={() => handleDrawReply(true)}>
+                Đồng ý
+              </button>
+              <button className="reject-btn" onClick={() => handleDrawReply(false)}>
+                Từ chối
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Challenge Modal - Always on top */}
+      {challengeRequest && (
+        <div className="challenge-modal-overlay">
+          <div className="challenge-modal">
+            <h2 className="textcolor">⚔️ Challenge Request!</h2>
+            <p className="challenger-name">{challengeRequest.challenger}</p>
+            <p>challenges you to a game!</p>
+            <div className="challenge-buttons">
+              <button 
+                className="accept-button"
+                onClick={() => handleChallengeResponse(true)}
+              >
+                ✓ Accept
+              </button>
+              <button 
+                className="reject-button"
+                onClick={() => handleChallengeResponse(false)}
+              >
+                ✗ Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Game Result Modal */}
+      {gameResult && (
+        <div className="game-result-overlay">
+          <div className="game-result-modal">
+            <div className={`result-icon ${gameResult.result === 'WIN' ? 'win' : gameResult.result === 'DRAW' ? 'draw' : 'lose'}`}>
+              {gameResult.result === 'WIN' ? '🏆' : gameResult.result === 'DRAW' ? '🤝' : '😢'}
+            </div>
+            <h2 className={`result-title ${gameResult.result === 'WIN' ? 'win' : gameResult.result === 'DRAW' ? 'draw' : 'lose'}`}>
+              {gameResult.result === 'WIN' ? 'CHIẾN THẮNG!' : gameResult.result === 'DRAW' ? 'HÒA!' : 'THẤT BẠI'}
+            </h2>
+            <p className="result-reason">{gameResult.reason}</p>
+            <p className="opponent-info">Đối thủ: {gameResult.opponent}</p>
+            
+            <div className="result-buttons">
+              <button 
+                className="rematch-button"
+                onClick={handleRematch}
+              >
+                ⚔️ Đấu lại
+              </button>
+              <button 
+                className="lobby-button"
+                onClick={handleBackToLobby}
+              >
+                🏠 Về sảnh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -61,8 +61,48 @@
 
 .game-content {
   display: flex;
+  flex-direction: column;
   gap: 1.5rem;
-  flex-wrap: wrap;
+}
+
+.game-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.surrender-btn, .draw-btn {
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+.surrender-btn {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+}
+
+.surrender-btn:hover {
+  background: linear-gradient(135deg, #ee5a6f, #ff6b6b);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+}
+
+.draw-btn {
+  background: linear-gradient(135deg, #4ecdc4, #44a3a0);
+  color: white;
+}
+
+.draw-btn:hover {
+  background: linear-gradient(135deg, #44a3a0, #4ecdc4);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
 }
 
 .boards-container {
@@ -104,4 +144,75 @@
   .game-info {
     gap: 1rem;
   }
+
+  .game-actions {
+    flex-direction: column;
+  }
+
+  .surrender-btn, .draw-btn {
+    width: 100%;
+  }
+}
+
+/* Draw offer modal */
+.draw-modal {
+  background: white;
+  border-radius: 15px;
+  padding: 2rem;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideDown 0.3s ease-out;
+}
+
+.draw-modal h3 {
+  color: #4ecdc4;
+  margin-bottom: 1rem;
+  font-size: 1.8rem;
+}
+
+.draw-modal p {
+  color: #333;
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.accept-btn, .reject-btn {
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+  max-width: 150px;
+}
+
+.accept-btn {
+  background: linear-gradient(135deg, #51cf66, #37b24d);
+  color: white;
+}
+
+.accept-btn:hover {
+  background: linear-gradient(135deg, #37b24d, #51cf66);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(81, 207, 102, 0.4);
+}
+
+.reject-btn {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+}
+
+.reject-btn:hover {
+  background: linear-gradient(135deg, #ee5a6f, #ff6b6b);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
 }

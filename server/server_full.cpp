@@ -108,6 +108,9 @@ void handle_place_ships(Client *client, const char *ships_data);
 void handle_move(Client *client, const char *coord);
 void check_game_end(GameSession *session);
 void end_game(GameSession *session, int winner_sock, const char *reason);
+void handle_surrender(Client *client);
+void handle_draw_offer(Client *client);
+void handle_draw_reply(Client *client, const char *status);
 void handle_disconnect(Client *client);
 
 // Utility functions
@@ -234,6 +237,7 @@ void send_player_list(int sock) {
     
     pthread_mutex_lock(&clients_mutex);
     int first = 1;
+    int count = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i] != NULL && 
             clients[i]->status != PLAYER_OFFLINE && 
@@ -245,11 +249,13 @@ void send_player_list(int sock) {
                 "{\"username\":\"%s\",\"status\":%d}", 
                 clients[i]->username, clients[i]->status);
             first = 0;
+            count++;
         }
     }
     pthread_mutex_unlock(&clients_mutex);
     
     offset += sprintf(response + offset, "]}}\n");
+    printf("[PLAYER_LIST] Sending %d players to socket %d\n", count, sock);
     send_message(sock, response);
 }
 
@@ -576,6 +582,7 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         send_message(winner->sock, message);
         winner->status = PLAYER_ONLINE;
         winner->in_game_with = 0;
+        printf("[END_GAME] %s wins, status set to ONLINE\n", winner->username);
     }
     
     if (loser) {
@@ -585,7 +592,20 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         send_message(loser->sock, message);
         loser->status = PLAYER_ONLINE;
         loser->in_game_with = 0;
+        printf("[END_GAME] %s loses, status set to ONLINE\n", loser->username);
     }
+    
+    // Remove game session
+    pthread_mutex_lock(&games_mutex);
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (game_sessions[i] == session) {
+            free(game_sessions[i]);
+            game_sessions[i] = NULL;
+            printf("[END_GAME] Game session removed\n");
+            break;
+        }
+    }
+    pthread_mutex_unlock(&games_mutex);
     
     printf("Game ended: %s\n", reason);
 }
@@ -612,6 +632,117 @@ void handle_disconnect(Client *client) {
             }
         }
         pthread_mutex_unlock(&games_mutex);
+    }
+}
+
+void handle_surrender(Client *client) {
+    printf("[SURRENDER] %s wants to surrender\n", client->username);
+    if (client->status != PLAYER_IN_GAME || client->in_game_with == 0) {
+        char message[BUFFER_SIZE];
+        sprintf(message, "{\"cmd\":\"ERROR\",\"payload\":{\"message\":\"Not in a game\"}}\n");
+        send_message(client->sock, message);
+        return;
+    }
+
+    Client *opponent = get_client(client->in_game_with);
+    if (!opponent) {
+        printf("[SURRENDER] No opponent found\n");
+        return;
+    }
+    printf("[SURRENDER] Ending game, opponent %s wins\n", opponent->username);
+
+    // Find game session
+    GameSession *session = NULL;
+    pthread_mutex_lock(&games_mutex);
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (game_sessions[i] && 
+            (game_sessions[i]->player1_sock == client->sock || game_sessions[i]->player2_sock == client->sock)) {
+            session = game_sessions[i];
+            break;
+        }
+    }
+    pthread_mutex_unlock(&games_mutex);
+
+    if (session) {
+        end_game(session, opponent->sock, "SURRENDER");
+    }
+}
+
+void handle_draw_offer(Client *client) {
+    printf("[DRAW_OFFER] %s offers draw\n", client->username);
+    if (client->status != PLAYER_IN_GAME || client->in_game_with == 0) {
+        char message[BUFFER_SIZE];
+        sprintf(message, "{\"cmd\":\"ERROR\",\"payload\":{\"message\":\"Not in a game\"}}\n");
+        send_message(client->sock, message);
+        return;
+    }
+
+    Client *opponent = get_client(client->in_game_with);
+    if (!opponent) {
+        printf("[DRAW_OFFER] No opponent found\n");
+        return;
+    }
+
+    // Send draw offer to opponent
+    char message[BUFFER_SIZE];
+    sprintf(message, "{\"cmd\":\"DRAW_OFFER\",\"payload\":{\"from\":\"%s\"}}\n", client->username);
+    printf("[DRAW_OFFER] Sending to %s (sock %d): %s", opponent->username, opponent->sock, message);
+    send_message(opponent->sock, message);
+}
+
+void handle_draw_reply(Client *client, const char *status) {
+    printf("[DRAW_REPLY] %s replies: %s\n", client->username, status);
+    if (client->status != PLAYER_IN_GAME || client->in_game_with == 0) {
+        return;
+    }
+
+    Client *opponent = get_client(client->in_game_with);
+    if (!opponent) {
+        printf("[DRAW_REPLY] No opponent found\n");
+        return;
+    }
+
+    if (strcmp(status, "accept") == 0) {
+        printf("[DRAW_REPLY] Draw accepted, ending game\n");
+        // Find game session and end as draw
+        GameSession *session = NULL;
+        pthread_mutex_lock(&games_mutex);
+        for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+            if (game_sessions[i] && 
+                (game_sessions[i]->player1_sock == client->sock || game_sessions[i]->player2_sock == client->sock)) {
+                session = game_sessions[i];
+                break;
+            }
+        }
+        pthread_mutex_unlock(&games_mutex);
+
+        if (session) {
+            // Send DRAW to both players
+            char message[BUFFER_SIZE];
+            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"DRAW\",\"reason\":\"DRAW_ACCEPTED\",\"log_id\":\"\"}}\n");
+            send_message(client->sock, message);
+            send_message(opponent->sock, message);
+
+            client->status = PLAYER_ONLINE;
+            client->in_game_with = 0;
+            opponent->status = PLAYER_ONLINE;
+            opponent->in_game_with = 0;
+
+            pthread_mutex_lock(&games_mutex);
+            for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+                if (game_sessions[i] == session) {
+                    free(game_sessions[i]);
+                    game_sessions[i] = NULL;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&games_mutex);
+        }
+    } else {
+        // Reject - notify opponent
+        char message[BUFFER_SIZE];
+        sprintf(message, "{\"cmd\":\"DRAW_REJECTED\",\"payload\":{}}\n");
+        send_message(opponent->sock, message);
     }
 }
 
@@ -680,13 +811,29 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
         char message[BUFFER_SIZE];
         sscanf(payload, "{\"message\":\"%[^\"]\"}", message);
         
+        printf("[CHAT] From: %s, Message: %s\n", client->username, message);
+        
         Client *opponent = get_client(client->in_game_with);
         if (opponent) {
+            printf("[CHAT] Sending to opponent: %s (sock %d)\n", opponent->username, opponent->sock);
             char response[BUFFER_SIZE];
             sprintf(response, "{\"cmd\":\"CHAT\",\"payload\":{\"from\":\"%s\",\"message\":\"%s\"}}\n", 
                     client->username, message);
             send_message(opponent->sock, response);
+        } else {
+            printf("[CHAT] No opponent found for %s\n", client->username);
         }
+    }
+    else if (strcmp(cmd, "SURRENDER") == 0) {
+        handle_surrender(client);
+    }
+    else if (strcmp(cmd, "DRAW_OFFER") == 0) {
+        handle_draw_offer(client);
+    }
+    else if (strcmp(cmd, "DRAW_REPLY") == 0) {
+        char status[20];
+        sscanf(payload, "{\"status\":\"%[^\"]\"}", status);
+        handle_draw_reply(client, status);
     }
 }
 

@@ -12,7 +12,7 @@
 }
 
 .app-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #667eea 0%, #f6f6f6 100%);
   padding: 20px;
   border-radius: 10px;
   margin-bottom: 20px;
@@ -182,4 +182,307 @@
 
 .messages-list::-webkit-scrollbar-thumb:hover {
   background: #764ba2;
+}
+
+/* Challenge Modal */
+.challenge-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.challenge-modal {
+  background: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  min-width: 400px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.challenge-modal h2 {
+  color: white;
+  font-size: 2rem;
+  margin-bottom: 20px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.challenge-modal .challenger-name {
+  color: #ffd700;
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin: 15px 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.challenge-modal > p {
+  color: white;
+  font-size: 1.2rem;
+  margin-bottom: 30px;
+}
+
+.challenge-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.challenge-buttons button {
+  padding: 15px 40px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.accept-button {
+  background: #4caf50;
+  color: white;
+  box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+}
+
+.accept-button:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
+}
+
+.reject-button {
+  background: #f44336;
+  color: white;
+  box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+}
+
+.reject-button:hover {
+  background: #da190b;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(244, 67, 54, 0.6);
+}
+
+.textcolor{
+  color: rgb(0, 0, 0);
+}
+
+/* Game Result Modal */
+.game-result-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.game-result-modal {
+  background: white;
+  padding: 50px;
+  border-radius: 15px;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  min-width: 450px;
+  border: 3px solid #000;
+  animation: slideDown 0.4s ease-out;
+}
+
+.result-icon {
+  font-size: 6rem;
+  margin-bottom: 20px;
+  animation: bounce 0.6s ease-in-out;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+.result-title {
+  font-size: 3rem;
+  margin-bottom: 15px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: #000;
+}
+
+.result-title.win {
+  color: #000;
+}
+
+.result-title.lose {
+  color: #000;
+}
+
+.result-title.draw {
+  color: #4ecdc4;
+}
+
+.result-icon.draw {
+  color: #4ecdc4;
+}
+
+.result-reason {
+  color: #333;
+  font-size: 1.3rem;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.opponent-info {
+  color: #666;
+  font-size: 1.1rem;
+  margin-bottom: 35px;
+  font-weight: 500;
+}
+
+.result-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.result-buttons button {
+  padding: 18px 45px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  border: 2px solid #000;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.rematch-button {
+  background: #000;
+  color: white;
+}
+
+.rematch-button:hover {
+  background: #333;
+  transform: translateY(-2px);
+}
+
+.lobby-button {
+  background: white;
+  color: #000;
+}
+
+.lobby-button:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px);
+}
+
+/* Draw offer modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.draw-modal {
+  background: white;
+  border-radius: 15px;
+  padding: 2rem;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideDown 0.3s ease-out;
+}
+
+.draw-modal h3 {
+  color: #4ecdc4;
+  margin-bottom: 1rem;
+  font-size: 1.8rem;
+}
+
+.draw-modal p {
+  color: #333;
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.accept-btn, .reject-btn {
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex: 1;
+  max-width: 150px;
+}
+
+.accept-btn {
+  background: linear-gradient(135deg, #51cf66, #37b24d);
+  color: white;
+}
+
+.accept-btn:hover {
+  background: linear-gradient(135deg, #37b24d, #51cf66);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(81, 207, 102, 0.4);
+}
+
+.reject-btn {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+}
+
+.reject-btn:hover {
+  background: linear-gradient(135deg, #ee5a6f, #ff6b6b);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
 }

@@ -90,7 +90,6 @@ io.on('connection', (socket) => {
   // Handle data from C++ server
   cppClient.on('data', (data) => {
     const dataStr = data.toString();
-    console.log(`[${new Date().toISOString()}] Data from C++ server for ${socket.id}:`, dataStr);
     
     // Append to buffer
     let buffer = messageBuffers.get(socket.id) + dataStr;
@@ -105,11 +104,9 @@ io.on('connection', (socket) => {
     messages.forEach((msg) => {
       if (msg.trim()) {
         try {
-          // Try to parse as JSON
           const jsonMsg = JSON.parse(msg);
           socket.emit('server-message', jsonMsg);
         } catch (e) {
-          // If not JSON, send as is
           socket.emit('server-message', { raw: msg });
         }
       }
