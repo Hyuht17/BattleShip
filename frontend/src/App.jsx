@@ -138,7 +138,11 @@ function App() {
 
       setGameState(prev => {
         if (!prev) return prev;
-        const newState = { ...prev };
+        const newState = { 
+          ...prev,
+          myShips: prev.myShips || [], // Ensure myShips is preserved
+          opponentShips: prev.opponentShips || []
+        };
         if (prev.yourTurn) {
           newState.opponentBoard = prev.opponentBoard.map(r => [...r]);
           newState.opponentBoard[row][col] = result === 'HIT' ? 2 : 3;

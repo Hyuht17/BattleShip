@@ -1,4 +1,5 @@
 .ship-placement {
+  width: 100%;
   background: white;
   border-radius: 15px;
   padding: 2rem;
@@ -171,16 +172,21 @@
 }
 
 .placement-hint {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
+  background: #e3f2fd;
+  border: 1px solid #2196f3;
   border-radius: 8px;
   padding: 0.75rem;
-  color: #856404;
+  color: #0d47a1;
 }
 
 .placement-hint p {
   margin: 0.25rem 0;
   font-size: 0.9rem;
+}
+
+.placement-hint strong {
+  color: #1565c0;
+  font-weight: 600;
 }
 
 /* Board-specific styles for placement */
@@ -192,6 +198,14 @@
 .placement-board .cell.hover-invalid {
   background: rgba(244, 67, 54, 0.3);
   cursor: not-allowed;
+}
+
+.placement-board .cell:not(.header):not(.ship) {
+  cursor: crosshair;
+}
+
+.placement-board .cell.ship {
+  cursor: default;
 }
 
 @media (max-width: 768px) {

@@ -82,12 +82,23 @@ function ShipPlacement({ onPlaceShips }) {
     setPlacedShips([...placedShips, {
       name: ship.name,
       size: ship.size,
+      symbol: ship.symbol,
       row,
       col,
       horizontal
     }]);
     setCurrentShip(currentShip + 1);
     setHoverCells([]);
+  };
+
+  const handleRightClick = (e, row, col) => {
+    e.preventDefault(); // Ngăn context menu mặc định
+    
+    // Toggle orientation
+    setOrientation(prev => prev === 'horizontal' ? 'vertical' : 'horizontal');
+    
+    // Update hover cells với orientation mới
+    handleCellHover(row, col);
   };
 
   const handleReset = () => {
@@ -120,6 +131,14 @@ function ShipPlacement({ onPlaceShips }) {
     return className;
   };
 
+  const getShipSymbol = (row, col) => {
+    const cellValue = board[row][col];
+    if (cellValue === 0) return null;
+    // cellValue là currentShip + 1, nên shipIndex = cellValue - 1
+    const shipIndex = cellValue - 1;
+    return SHIPS[shipIndex]?.symbol || '🚢';
+  };
+
   return (
     <div className="ship-placement">
       <h3>📍 Place Your Ships</h3>
@@ -140,10 +159,11 @@ function ShipPlacement({ onPlaceShips }) {
                     key={`${row}-${colIndex}`}
                     className={getCellClass(rowIndex, colIndex)}
                     onClick={() => handleCellClick(rowIndex, colIndex)}
+                    onContextMenu={(e) => handleRightClick(e, rowIndex, colIndex)}
                     onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
                     onMouseLeave={() => setHoverCells([])}
                   >
-                    {board[rowIndex][colIndex] > 0 && '🚢'}
+                    {board[rowIndex][colIndex] > 0 && getShipSymbol(rowIndex, colIndex)}
                   </div>
                 ))}
               </>
@@ -199,8 +219,9 @@ function ShipPlacement({ onPlaceShips }) {
           </div>
 
           <div className="placement-hint">
-            <p>💡 Click on the board to place the current ship</p>
-            <p>💡 Toggle orientation before placing</p>
+            <p>💡 <strong>Left-click</strong> to place the current ship</p>
+            <p>💡 <strong>Right-click</strong> to rotate orientation</p>
+            <p>💡 Or use the buttons to toggle orientation</p>
           </div>
         </div>
       </div>

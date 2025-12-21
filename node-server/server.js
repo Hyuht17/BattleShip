@@ -35,7 +35,11 @@ const io = new Server(httpServer, {
     origin: true,  // Cho phép tất cả origins (dev mode)
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  // Tăng timeout để tránh disconnect khi idle
+  pingTimeout: 60000,      // 60 giây - thời gian chờ PONG response
+  pingInterval: 25000,     // 25 giây - interval giữa các PING
+  connectTimeout: 45000    // 45 giây - timeout cho initial connection
 });
 
 app.use(cors({
@@ -76,7 +80,8 @@ io.on('connection', (socket) => {
   messageBuffers.set(socket.id, '');
 
   // Set keepalive to detect disconnections
-  cppClient.setKeepAlive(true, parseInt(process.env.KEEP_ALIVE_TIMEOUT));
+  const keepAliveDelay = parseInt(process.env.CPP_SERVER_KEEP_ALIVE) || 60000; // Default 60s
+  cppClient.setKeepAlive(true, keepAliveDelay);
   
   // Connect to C++ server (all clients connect to SAME C++ server)
   // Tất cả clients đều kết nối đến CÙNG 1 C++ server
@@ -129,7 +134,7 @@ io.on('connection', (socket) => {
   });
 
   // Handle connection timeout
-  cppClient.setTimeout(30000); // 30 second timeout
+  cppClient.setTimeout(6000000); // 30 second timeout
   cppClient.on('timeout', () => {
     console.log(`[${new Date().toISOString()}] Connection timeout for client ${socket.id}`);
     cppClient.destroy();
