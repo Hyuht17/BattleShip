@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import './LobbyScreen.css';
+import MatchHistory from './MatchHistory';
 
 function LobbyScreen({ socket, sendMessage, user }) {
   const [players, setPlayers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     // Request player list on mount
@@ -53,13 +55,21 @@ function LobbyScreen({ socket, sendMessage, user }) {
         
         <div className="lobby-header">
           <h3>Available Players</h3>
-          <button 
-            onClick={refreshPlayerList} 
-            className="refresh-button"
-            disabled={refreshing}
-          >
-            {refreshing ? '🔄 Refreshing...' : '🔄 Refresh'}
-          </button>
+          <div className="lobby-actions">
+            <button 
+              onClick={() => setShowHistory(true)}
+              className="history-button"
+            >
+              📊 Lịch sử
+            </button>
+            <button 
+              onClick={refreshPlayerList} 
+              className="refresh-button"
+              disabled={refreshing}
+            >
+              {refreshing ? '🔄 Refreshing...' : '🔄 Refresh'}
+            </button>
+          </div>
         </div>
 
         <div className="players-list">
@@ -74,7 +84,12 @@ function LobbyScreen({ socket, sendMessage, user }) {
                 <div key={index} className="player-card">
                   <div className="player-info">
                     <span className="player-icon">👤</span>
-                    <span className="player-name">{player.username}</span>
+                    <div className="player-details">
+                      <span className="player-name">{player.username}</span>
+                      {player.elo !== undefined && (
+                        <span className="player-elo">⭐ {player.elo} ELO</span>
+                      )}
+                    </div>
                     <span className={`player-status status-${player.status}`}>
                       {player.status === 1 ? '🟢 Online' : 
                        player.status === 2 ? '🟡 In Lobby' : '🔴 In Game'}
@@ -98,6 +113,14 @@ function LobbyScreen({ socket, sendMessage, user }) {
           <p>💡 You will be notified when someone challenges you</p>
         </div>
       </div>
+      
+      {showHistory && (
+        <MatchHistory 
+          socket={socket} 
+          user={user} 
+          onClose={() => setShowHistory(false)} 
+        />
+      )}
     </div>
   );
 }

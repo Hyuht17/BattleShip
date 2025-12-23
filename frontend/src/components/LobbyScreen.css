@@ -36,6 +36,28 @@
   font-size: 1.3rem;
 }
 
+.lobby-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.history-button {
+  padding: 0.5rem 1.25rem;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.history-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+}
+
 .refresh-button {
   padding: 0.5rem 1.25rem;
   background: #667eea;
@@ -109,10 +131,22 @@
   font-size: 1.5rem;
 }
 
+.player-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .player-name {
   font-weight: 600;
   font-size: 1.1rem;
   color: #333;
+}
+
+.player-elo {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #667eea;
 }
 
 .player-status {

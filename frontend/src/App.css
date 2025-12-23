@@ -375,8 +375,43 @@
 .opponent-info {
   color: #666;
   font-size: 1.1rem;
-  margin-bottom: 35px;
+  margin-bottom: 20px;
   font-weight: 500;
+}
+
+.elo-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 35px;
+  padding: 15px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 8px;
+  justify-content: center;
+}
+
+.elo-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.elo-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.elo-value.win {
+  color: #28a745;
+}
+
+.elo-value.lose {
+  color: #dc3545;
+}
+
+.elo-change {
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .result-buttons {
@@ -492,4 +527,45 @@
   background: linear-gradient(135deg, #ee5a6f, #ff6b6b);
   transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+}
+
+/* User Info & Logout */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.username {
+  display: inline-block;
+}
+
+.user-elo {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.logout-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+  background: linear-gradient(135deg, #ee5a6f, #c92a2a);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
 }

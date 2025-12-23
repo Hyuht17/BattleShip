@@ -3,106 +3,49 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import net from 'net';
-import cors from 'cors';
-import os from 'os';
 
 const app = express();
 const httpServer = http.createServer(app);
 
-// ✅ Lấy IP của server trong LAN
-function getLocalIP() {
-  const interfaces = os.networkInterfaces();
-  for (const devName in interfaces) {
-    const iface = interfaces[devName];
-    for (let i = 0; i < iface.length; i++) {
-      const alias = iface[i];
-      if (alias.family === 'IPv4' && !alias.internal) {
-        return alias.address;
-      }
-    }
-  }
-  return 'localhost';
-}
-
-const LOCAL_IP = getLocalIP();
-console.log(`🌐 Server LAN IP: ${LOCAL_IP}`);
-
-// CORS: Cho phép browsers từ mọi IP kết nối WebSocket đến Node.js
-// Node.js server chỉ kết nối đến 1 C++ server (qua CPP_SERVER_HOST)
-// Không có kết nối giữa các Node.js servers với nhau
 const io = new Server(httpServer, {
-  cors: {
-    origin: true,  // Cho phép tất cả origins (dev mode)
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  // Tăng timeout để tránh disconnect khi idle
-  pingTimeout: 60000,      // 60 giây - thời gian chờ PONG response
-  pingInterval: 25000,     // 25 giây - interval giữa các PING
-  connectTimeout: 45000    // 45 giây - timeout cho initial connection
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  connectTimeout: 45000
 });
 
-app.use(cors({
-  origin: true,  // Cho phép tất cả (dev mode)
-  credentials: true
-}));
-app.use(express.json());
+// C Client configuration (localhost only)
+// Usage: C_CLIENT_PORT=9001 node server.js
+const C_CLIENT_HOST = 'localhost';
+const C_CLIENT_PORT = parseInt(process.env.C_CLIENT_PORT || 9000);
+const NODE_SERVER_PORT = parseInt(process.env.NODE_SERVER_PORT || 3000);
 
-// C++ Server configuration
-// Nếu Node.js và C++ server cùng máy: dùng 'localhost'
-// Nếu C++ server ở máy khác trong LAN: thay 'localhost' bằng IP (ví dụ: '192.168.1.100')
-const CPP_SERVER_HOST = process.env.CPP_SERVER_HOST;
-const CPP_SERVER_PORT = parseInt(process.env.CPP_SERVER_PORT);
-const NODE_SERVER_PORT = parseInt(process.env.NODE_SERVER_PORT);
+console.log(`🔌 Connecting to C Client: ${C_CLIENT_HOST}:${C_CLIENT_PORT}`);
+console.log(`🌐 Node Server Port: ${NODE_SERVER_PORT}`);
 
-console.log(`📡 C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
-
-// Store active connections
-const connections = new Map();
-const messageBuffers = new Map(); // Buffer for incomplete messages
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Node.js server is running' });
-});
+// Store active TCP connections to C client
+const tcpClients = new Map();
+const messageBuffers = new Map();
 
 // Socket.IO connection handling
-// MỖI CLIENT tạo 1 WebSocket connection đến Node.js
-// Node.js tạo 1 TCP connection tương ứng đến C++ server
-// Clients KHÔNG kết nối với nhau, chỉ kết nối đến C++ server qua Node.js
 io.on('connection', (socket) => {
-  console.log(`[${new Date().toISOString()}] Client ${socket.id} connected from ${socket.handshake.address}`);
+  console.log(`Browser client ${socket.id} connected`);
 
-  // Create DEDICATED TCP connection to C++ server for THIS client
-  // Mỗi client có 1 TCP connection riêng đến C++ server
-  const cppClient = new net.Socket();
-  connections.set(socket.id, cppClient);
+  // Create TCP connection to C client
+  const tcpClient = new net.Socket();
+  tcpClients.set(socket.id, tcpClient);
   messageBuffers.set(socket.id, '');
 
-  // Set keepalive to detect disconnections
-  const keepAliveDelay = parseInt(process.env.CPP_SERVER_KEEP_ALIVE) || 60000; // Default 60s
-  cppClient.setKeepAlive(true, keepAliveDelay);
-  
-  // Connect to C++ server (all clients connect to SAME C++ server)
-  // Tất cả clients đều kết nối đến CÙNG 1 C++ server
-  console.log(`[${new Date().toISOString()}] Attempting TCP connection to ${CPP_SERVER_HOST}:${CPP_SERVER_PORT} for client ${socket.id}`);
-  
-  cppClient.connect(CPP_SERVER_PORT, CPP_SERVER_HOST, () => {
-    console.log(`[${new Date().toISOString()}] ✅ TCP connected to C++ server for client ${socket.id}`);
-    socket.emit('server-connected', { message: 'Connected to game server' });
+  tcpClient.connect(C_CLIENT_PORT, C_CLIENT_HOST, () => {
+    console.log(`TCP connected to C client for ${socket.id}`);
   });
 
-  // Handle data from C++ server
-  cppClient.on('data', (data) => {
+  // Nhận dữ liệu từ C client (forwarded from C++ server)
+  tcpClient.on('data', (data) => {
     const dataStr = data.toString();
-    
-    // Append to buffer
     let buffer = messageBuffers.get(socket.id) + dataStr;
     
-    // Split by newlines to handle multiple messages
+    // Split by newlines
     const messages = buffer.split('\n');
-    
-    // Keep the last incomplete message in buffer
     messageBuffers.set(socket.id, messages.pop() || '');
     
     // Process complete messages
@@ -110,114 +53,69 @@ io.on('connection', (socket) => {
       if (msg.trim()) {
         try {
           const jsonMsg = JSON.parse(msg);
+          console.log(`[${socket.id}] C++ → Browser:`, jsonMsg.cmd || 'DATA');
           socket.emit('server-message', jsonMsg);
         } catch (e) {
-          socket.emit('server-message', { raw: msg });
+          console.error(`[${socket.id}] JSON parse error:`, msg);
         }
       }
     });
   });
 
-  // Handle C++ server errors
-  cppClient.on('error', (err) => {
-    console.error(`[${new Date().toISOString()}] ❌ C++ server error for client ${socket.id}:`);
-    console.error(`   Error code: ${err.code}`);
-    console.error(`   Error message: ${err.message}`);
-    console.error(`   Tried to connect to: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
+  // TCP connection closed
+  tcpClient.on('close', () => {
+    console.log(`TCP connection closed for ${socket.id}`);
+    socket.emit('server-disconnected', { message: 'Connection to game server closed' });
+  });
+
+  // TCP connection error
+  tcpClient.on('error', (err) => {
+    console.error(`TCP error for ${socket.id}:`, err.message);
     socket.emit('server-error', { error: err.message });
   });
 
-  // Handle C++ server disconnection
-  cppClient.on('close', () => {
-    console.log(`[${new Date().toISOString()}] C++ server connection closed for client ${socket.id}`);
-    socket.emit('server-disconnected', { message: 'Disconnected from game server' });
-  });
-
-  // Handle connection timeout
-  cppClient.setTimeout(6000000); // 30 second timeout
-  cppClient.on('timeout', () => {
-    console.log(`[${new Date().toISOString()}] Connection timeout for client ${socket.id}`);
-    cppClient.destroy();
-  });
-
-  // Handle messages from frontend client
+  // Handle messages from browser → C client → C++ server
   socket.on('client-message', (data) => {
-    console.log(`[${new Date().toISOString()}] Message from client ${socket.id}:`, JSON.stringify(data));
-    if (cppClient && !cppClient.destroyed) {
+    console.log(`[${socket.id}] Browser → C++:`, data.cmd || JSON.stringify(data).substring(0, 50));
+    
+    if (tcpClient && !tcpClient.destroyed) {
       const message = JSON.stringify(data) + '\n';
-      cppClient.write(message);
+      tcpClient.write(message);
     } else {
-      socket.emit('error', { message: 'Not connected to game server' });
+      console.error(`TCP client not available for ${socket.id}`);
+      socket.emit('server-message', {
+        cmd: 'ERROR',
+        payload: { message: 'Not connected to server' }
+      });
     }
   });
 
-  // Handle specific game commands
-  socket.on('register', (data) => {
-    const msg = { cmd: 'REGISTER', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('login', (data) => {
-    const msg = { cmd: 'LOGIN', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('get-players', () => {
-    const msg = { cmd: 'PLAYER_LIST', payload: {} };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('challenge', (data) => {
-    const msg = { cmd: 'CHALLENGE', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('challenge-reply', (data) => {
-    const msg = { cmd: 'CHALLENGE_REPLY', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('place-ships', (data) => {
-    const msg = { cmd: 'PLACE_SHIPS', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('make-move', (data) => {
-    const msg = { cmd: 'MOVE', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  socket.on('chat', (data) => {
-    const msg = { cmd: 'CHAT', payload: data };
-    socket.emit('client-message', msg);
-  });
-
-  // Handle client disconnection
+  // Browser disconnect
   socket.on('disconnect', () => {
-    console.log(`[${new Date().toISOString()}] Client disconnected: ${socket.id}`);
-    const connection = connections.get(socket.id);
-    if (connection && !connection.destroyed) {
-      connection.destroy();
+    console.log(`Browser client disconnected: ${socket.id}`);
+    
+    const client = tcpClients.get(socket.id);
+    if (client && !client.destroyed) {
+      client.destroy();
     }
-    connections.delete(socket.id);
+    
+    tcpClients.delete(socket.id);
     messageBuffers.delete(socket.id);
   });
 });
 
-// Start server - Only listen on localhost (not LAN)
-// Chỉ listen localhost, không public ra LAN
+// Start the server
 httpServer.listen(NODE_SERVER_PORT, 'localhost', () => {
-  console.log(`✅ Node.js server listening on:`);
-  console.log(`   - Local: http://localhost:${NODE_SERVER_PORT}`);
-  console.log(`   📡 Connecting to C++ Server: ${CPP_SERVER_HOST}:${CPP_SERVER_PORT}`);
+  console.log(`Node.js server running on http://localhost:${NODE_SERVER_PORT}`);
+  console.log(`Connecting to C Client: ${C_CLIENT_HOST}:${C_CLIENT_PORT}`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n\nShutting down gracefully...');
-  connections.forEach((connection) => {
-    if (!connection.destroyed) {
-      connection.destroy();
+  tcpClients.forEach((client) => {
+    if (!client.destroyed) {
+      client.destroy();
     }
   });
   httpServer.close(() => {

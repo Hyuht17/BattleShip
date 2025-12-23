@@ -17,8 +17,23 @@ function App() {
   const socketRef = useRef(null);
   const opponentRef = useRef(null); // Store opponent name to avoid stale closure
 
+  // Load saved user from localStorage on mount
   useEffect(() => {
-    console.log('🌐 Connecting to:', SOCKET_SERVER_URL);
+    const savedUser = localStorage.getItem('battleship_user');
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        setUser(userData);
+        setScreen('lobby');
+      } catch (e) {
+        console.error('Failed to parse saved user:', e);
+        localStorage.removeItem('battleship_user');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('Connecting to:', SOCKET_SERVER_URL);
     
     // Initialize socket connection
     socketRef.current = io(SOCKET_SERVER_URL, {
@@ -32,6 +47,22 @@ function App() {
     socketRef.current.on('connect', () => {
       console.log('Connected to Node.js server');
       setConnected(true);
+      
+      // Auto-login if user exists in localStorage
+      const savedUser = localStorage.getItem('battleship_user');
+      if (savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          console.log('Auto-login with saved user:', userData.username);
+          // Send LOGIN directly via socket
+          socketRef.current.emit('client-message', {
+            cmd: 'LOGIN',
+            payload: { username: userData.username }
+          });
+        } catch (e) {
+          console.error('Failed to auto-login:', e);
+        }
+      }
     });
 
     socketRef.current.on('server-connected', (data) => {
@@ -39,7 +70,7 @@ function App() {
     });
 
     socketRef.current.on('disconnect', () => {
-      console.log('❌ Disconnected from server');
+      console.log('Disconnected from server');
       setConnected(false);
     });
 
@@ -54,8 +85,11 @@ function App() {
 
       switch (cmd) {
         case 'LOGIN_SUCCESS':
-          console.log('[LOGIN SUCCESS] User:', payload.username);
-          setUser({ username: payload.username });
+          console.log('[LOGIN SUCCESS] User:', payload.username, 'ELO:', payload.elo);
+          const userData = { username: payload.username, elo: payload.elo || 800 };
+          setUser(userData);
+          // Save to localStorage
+          localStorage.setItem('battleship_user', JSON.stringify(userData));
           setScreen('lobby');
           break;
 
@@ -166,6 +200,16 @@ function App() {
       console.log('[GAME_END] Opponent name:', opponentName);
       console.log('[GAME_END] Payload:', payload);
       
+      // Update user ELO if provided
+      if (payload.elo !== undefined) {
+        setUser(prev => {
+          const newUser = { ...prev, elo: payload.elo };
+          // Update localStorage with new ELO
+          localStorage.setItem('battleship_user', JSON.stringify(newUser));
+          return newUser;
+        });
+      }
+      
       let reason = payload.reason;
       if (payload.reason === 'OPPONENT_DISCONNECT') {
         reason = 'Đối thủ đã ngắt kết nối';
@@ -178,7 +222,8 @@ function App() {
       setGameResult({
         result: payload.result,
         reason: reason,
-        opponent: opponentName
+        opponent: opponentName,
+        elo: payload.elo // Add ELO to result modal
       });
     };
 
@@ -301,6 +346,21 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    // Clear localStorage
+    localStorage.removeItem('battleship_user');
+    
+    // Reset state
+    setUser(null);
+    setScreen('login');
+    setGameState(null);
+    setChallengeRequest(null);
+    setGameResult(null);
+    setDrawRequest(null);
+    
+    console.log('Logged out');
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -308,7 +368,17 @@ function App() {
         <div className={`status ${connected ? 'connected' : 'disconnected'}`}>
           {connected ? '🟢 Connected' : '🔴 Disconnected'}
         </div>
-        {user && <div className="user-info">👤 {user.username}</div>}
+        {user && (
+          <div className="user-info">
+            <span className="username">👤 {user.username}</span>
+            {user.elo !== undefined && (
+              <span className="user-elo">⭐ {user.elo} ELO</span>
+            )}
+            <button className="logout-btn" onClick={handleLogout}>
+              Đăng xuất
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="app-main">
@@ -398,6 +468,16 @@ function App() {
             </h2>
             <p className="result-reason">{gameResult.reason}</p>
             <p className="opponent-info">Đối thủ: {gameResult.opponent}</p>
+            {gameResult.elo !== undefined && (
+              <div className="elo-info">
+                <span className="elo-label">ELO mới:</span>
+                <span className={`elo-value ${gameResult.result === 'WIN' ? 'win' : 'lose'}`}>
+                  ⭐ {gameResult.elo}
+                  {gameResult.result === 'WIN' && <span className="elo-change"> (+10)</span>}
+                  {gameResult.result === 'LOSE' && <span className="elo-change"> (-10)</span>}
+                </span>
+              </div>
+            )}
             
             <div className="result-buttons">
               <button 

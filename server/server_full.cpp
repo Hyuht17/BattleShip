@@ -46,7 +46,7 @@ typedef struct {
 typedef struct {
     char username[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
-    int score;
+    int elo;
     int games_played;
     int games_won;
 } PlayerAccount;
@@ -206,8 +206,8 @@ int register_user(const char *username, const char *password) {
         }
     }
     
-    // Add new user
-    fprintf(fp, "%s:%s:0:0:0\n", username, password);
+    // Add new user with default ELO 800
+    fprintf(fp, "%s:%s:800:0:0\n", username, password);
     fclose(fp);
     return 1;
 }
@@ -231,6 +231,125 @@ int authenticate_user(const char *username, const char *password) {
     return 0;
 }
 
+// Get player ELO
+int get_player_elo(const char *username) {
+    FILE *fp = fopen("users.dat", "r");
+    if (!fp) return 800; // Default ELO
+    
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        char stored_user[USERNAME_SIZE];
+        char stored_pass[PASSWORD_SIZE];
+        int elo, games_played, games_won;
+        sscanf(line, "%[^:]:%[^:]:%d:%d:%d", stored_user, stored_pass, &elo, &games_played, &games_won);
+        if (strcmp(stored_user, username) == 0) {
+            fclose(fp);
+            return elo;
+        }
+    }
+    
+    fclose(fp);
+    return 800;
+}
+
+// Update player ELO and stats
+void update_player_stats(const char *username, int elo_change, int is_winner) {
+    FILE *fp = fopen("users.dat", "r");
+    if (!fp) return;
+    
+    char lines[MAX_CLIENTS][256];
+    int line_count = 0;
+    
+    // Read all lines
+    while (fgets(lines[line_count], 256, fp) && line_count < MAX_CLIENTS) {
+        line_count++;
+    }
+    fclose(fp);
+    
+    // Update the user's line
+    fp = fopen("users.dat", "w");
+    if (!fp) return;
+    
+    for (int i = 0; i < line_count; i++) {
+        char stored_user[USERNAME_SIZE];
+        char stored_pass[PASSWORD_SIZE];
+        int elo, games_played, games_won;
+        sscanf(lines[i], "%[^:]:%[^:]:%d:%d:%d", stored_user, stored_pass, &elo, &games_played, &games_won);
+        
+        if (strcmp(stored_user, username) == 0) {
+            elo += elo_change;
+            if (elo < 0) elo = 0; // Minimum ELO is 0
+            games_played++;
+            if (is_winner) games_won++;
+            fprintf(fp, "%s:%s:%d:%d:%d\n", stored_user, stored_pass, elo, games_played, games_won);
+        } else {
+            fprintf(fp, "%s", lines[i]);
+        }
+    }
+    
+    fclose(fp);
+}
+
+// Save match history to user's history file
+// Format: timestamp:opponent:result (WIN/LOSE/DRAW)
+void save_match_history(const char *username, const char *opponent, const char *result) {
+    char filename[128];
+    sprintf(filename, "match_history_%s.dat", username);
+    
+    FILE *fp = fopen(filename, "a");
+    if (!fp) return;
+    
+    time_t now = time(NULL);
+    fprintf(fp, "%ld:%s:%s\n", now, opponent, result);
+    fclose(fp);
+    
+    printf("[MATCH_HISTORY] Saved for %s vs %s: %s\n", username, opponent, result);
+}
+
+// Get match history for a user
+void send_match_history(int sock, const char *username) {
+    char filename[128];
+    sprintf(filename, "match_history_%s.dat", username);
+    
+    FILE *fp = fopen(filename, "r");
+    
+    char response[BUFFER_SIZE * 4]; // Larger buffer for history
+    int offset = sprintf(response, "{\"cmd\":\"MATCH_HISTORY\",\"payload\":{\"matches\":[");
+    
+    if (fp) {
+        char line[256];
+        int first = 1;
+        int count = 0;
+        
+        // Read last 50 matches (or all if less)
+        char matches[50][256];
+        int match_count = 0;
+        while (fgets(line, sizeof(line), fp) && match_count < 50) {
+            strcpy(matches[match_count++], line);
+        }
+        fclose(fp);
+        
+        // Send in reverse order (newest first)
+        for (int i = match_count - 1; i >= 0; i--) {
+            long timestamp;
+            char opponent[USERNAME_SIZE];
+            char result[10];
+            
+            if (sscanf(matches[i], "%ld:%[^:]:%s", &timestamp, opponent, result) == 3) {
+                if (!first) offset += sprintf(response + offset, ",");
+                offset += sprintf(response + offset, 
+                    "{\"timestamp\":%ld,\"opponent\":\"%s\",\"result\":\"%s\"}", 
+                    timestamp, opponent, result);
+                first = 0;
+                count++;
+            }
+        }
+    }
+    
+    offset += sprintf(response + offset, "]}}\n");
+    send_message(sock, response);
+}
+
 void send_player_list(int sock) {
     char response[BUFFER_SIZE];
     int offset = sprintf(response, "{\"cmd\":\"PLAYER_LIST\",\"payload\":{\"players\":[");
@@ -245,9 +364,10 @@ void send_player_list(int sock) {
             clients[i]->sock != sock) {
             
             if (!first) offset += sprintf(response + offset, ",");
+            int elo = get_player_elo(clients[i]->username);
             offset += sprintf(response + offset, 
-                "{\"username\":\"%s\",\"status\":%d}", 
-                clients[i]->username, clients[i]->status);
+                "{\"username\":\"%s\",\"status\":%d,\"elo\":%d}", 
+                clients[i]->username, clients[i]->status, elo);
             first = 0;
             count++;
         }
@@ -415,7 +535,6 @@ void handle_place_ships(Client *client, const char *ships_data) {
         ptr++;
     }
     
-    printf("[DEBUG] Ships placed: %d, Total cells: %d\n", client->board.ship_count, client->board.total_ship_cells);
     
     client->ready = 1;
     
@@ -575,24 +694,38 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
     Client *winner = get_client(winner_sock);
     Client *loser = get_client(winner_sock == session->player1_sock ? session->player2_sock : session->player1_sock);
     
+    // Update ELO ratings and save match history
+    if (winner && loser) {
+        update_player_stats(winner->username, 10, 1);  // +10 ELO, win
+        update_player_stats(loser->username, -10, 0);  // -10 ELO, lose
+        
+        // Save match history for both players
+        save_match_history(winner->username, loser->username, "WIN");
+        save_match_history(loser->username, winner->username, "LOSE");
+        
+        printf("[ELO] %s +10, %s -10\n", winner->username, loser->username);
+    }
+    
     if (winner) {
+        int new_elo = get_player_elo(winner->username);
         char message[BUFFER_SIZE];
-        sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"%s\",\"log_id\":\"%s\"}}\n", 
-                reason, session->log_id);
+        sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
+                reason, session->log_id, new_elo);
         send_message(winner->sock, message);
         winner->status = PLAYER_ONLINE;
         winner->in_game_with = 0;
-        printf("[END_GAME] %s wins, status set to ONLINE\n", winner->username);
+        printf("[END_GAME] %s wins, status set to ONLINE, ELO: %d\n", winner->username, new_elo);
     }
     
     if (loser) {
+        int new_elo = get_player_elo(loser->username);
         char message[BUFFER_SIZE];
-        sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"LOSE\",\"reason\":\"%s\",\"log_id\":\"%s\"}}\n", 
-                reason, session->log_id);
+        sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"LOSE\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
+                reason, session->log_id, new_elo);
         send_message(loser->sock, message);
         loser->status = PLAYER_ONLINE;
         loser->in_game_with = 0;
-        printf("[END_GAME] %s loses, status set to ONLINE\n", loser->username);
+        printf("[END_GAME] %s loses, status set to ONLINE, ELO: %d\n", loser->username, new_elo);
     }
     
     // Remove game session
@@ -614,8 +747,17 @@ void handle_disconnect(Client *client) {
     if (client->status == PLAYER_IN_GAME && client->in_game_with > 0) {
         Client *opponent = get_client(client->in_game_with);
         if (opponent) {
+            // Save match history: opponent wins because client disconnected
+            save_match_history(opponent->username, client->username, "WIN");
+            save_match_history(client->username, opponent->username, "LOSE");
+            
+            // Update ELO
+            update_player_stats(opponent->username, 10, 1);  // Winner +10
+            update_player_stats(client->username, -10, 0);   // Loser -10
+            
+            int new_elo = get_player_elo(opponent->username);
             char message[BUFFER_SIZE];
-            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_DISCONNECT\",\"log_id\":\"\"}}\n");
+            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_DISCONNECT\",\"log_id\":\"\",\"elo\":%d}}\n", new_elo);
             send_message(opponent->sock, message);
             opponent->status = PLAYER_ONLINE;
             opponent->in_game_with = 0;
@@ -717,10 +859,19 @@ void handle_draw_reply(Client *client, const char *status) {
         pthread_mutex_unlock(&games_mutex);
 
         if (session) {
-            // Send DRAW to both players
+            // Save match history for both players as DRAW
+            save_match_history(client->username, opponent->username, "DRAW");
+            save_match_history(opponent->username, client->username, "DRAW");
+            
+            // No ELO change for draw
+            int client_elo = get_player_elo(client->username);
+            int opponent_elo = get_player_elo(opponent->username);
+            
+            // Send DRAW to both players with current ELO
             char message[BUFFER_SIZE];
-            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"DRAW\",\"reason\":\"DRAW_ACCEPTED\",\"log_id\":\"\"}}\n");
+            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"DRAW\",\"reason\":\"DRAW_ACCEPTED\",\"log_id\":\"\",\"elo\":%d}}\n", client_elo);
             send_message(client->sock, message);
+            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"DRAW\",\"reason\":\"DRAW_ACCEPTED\",\"log_id\":\"\",\"elo\":%d}}\n", opponent_elo);
             send_message(opponent->sock, message);
 
             client->status = PLAYER_ONLINE;
@@ -769,11 +920,12 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
             strncpy(client->username, username, USERNAME_SIZE - 1);
             client->status = PLAYER_ONLINE;
             
+            int elo = get_player_elo(username);
             char response[BUFFER_SIZE];
-            sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"message\":\"Welcome!\"}}\n", username);
+            sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"message\":\"Welcome!\",\"elo\":%d}}\n", username, elo);
             send_message(client->sock, response);
             
-            printf("User logged in: %s (socket %d)\n", username, client->sock);
+            printf("User logged in: %s (socket %d, ELO: %d)\n", username, client->sock, elo);
         } else {
             char response[BUFFER_SIZE];
             sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":401,\"message\":\"Invalid credentials\"}}\n");
@@ -782,6 +934,9 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
     }
     else if (strcmp(cmd, "PLAYER_LIST") == 0) {
         send_player_list(client->sock);
+    }
+    else if (strcmp(cmd, "MATCH_HISTORY") == 0) {
+        send_match_history(client->sock, client->username);
     }
     else if (strcmp(cmd, "CHALLENGE") == 0) {
         char target[USERNAME_SIZE];
