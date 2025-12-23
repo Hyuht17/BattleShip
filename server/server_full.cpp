@@ -293,8 +293,11 @@ void update_player_stats(const char *username, int elo_change, int is_winner) {
 // Save match history to user's history file
 // Format: timestamp:opponent:result (WIN/LOSE/DRAW)
 void save_match_history(const char *username, const char *opponent, const char *result) {
+    // Create history directory if it doesn't exist
+    system("mkdir -p history");
+    
     char filename[128];
-    sprintf(filename, "match_history_%s.dat", username);
+    sprintf(filename, "history/match_history_%s.dat", username);
     
     FILE *fp = fopen(filename, "a");
     if (!fp) return;
@@ -309,7 +312,7 @@ void save_match_history(const char *username, const char *opponent, const char *
 // Get match history for a user
 void send_match_history(int sock, const char *username) {
     char filename[128];
-    sprintf(filename, "match_history_%s.dat", username);
+    sprintf(filename, "history/match_history_%s.dat", username);
     
     FILE *fp = fopen(filename, "r");
     
