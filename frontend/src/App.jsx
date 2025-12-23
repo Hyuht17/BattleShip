@@ -166,7 +166,7 @@ function App() {
     };
 
     const handleMoveResultInline = (payload) => {
-      const { coord, result, ship_sunk } = payload;
+      const { coord, result, ship_sunk, is_your_shot } = payload;
       const col = parseInt(coord.substring(1));
       const row = coord.charCodeAt(0) - 65;
 
@@ -177,13 +177,31 @@ function App() {
           myShips: prev.myShips || [], // Ensure myShips is preserved
           opponentShips: prev.opponentShips || []
         };
-        if (prev.yourTurn) {
+        
+        // Use is_your_shot field from server to determine which board to update
+        if (is_your_shot === true || is_your_shot === undefined) {
+          // This is your shot - update opponent board (tracking board)
           newState.opponentBoard = prev.opponentBoard.map(r => [...r]);
-          newState.opponentBoard[row][col] = result === 'HIT' ? 2 : 3;
+          if (result === 'HIT' || result === 'ALREADY_HIT') {
+            newState.opponentBoard[row][col] = 2; // Hit
+          } else if (result === 'MISS') {
+            newState.opponentBoard[row][col] = 3; // Miss
+          }
         } else {
+          // This is opponent's shot - update your board (defensive board)
           newState.myBoard = prev.myBoard.map(r => [...r]);
-          if (newState.myBoard[row][col] === 1) {
-            newState.myBoard[row][col] = 2;
+          if (result === 'HIT' || result === 'ALREADY_HIT') {
+            // Mark as hit (only if there's a ship there)
+            if (newState.myBoard[row][col] === 1) {
+              newState.myBoard[row][col] = 2; // Hit on ship
+            } else {
+              newState.myBoard[row][col] = 2; // Hit (already marked)
+            }
+          } else if (result === 'MISS') {
+            // Mark as miss on your board
+            if (newState.myBoard[row][col] === 0) {
+              newState.myBoard[row][col] = 3; // Miss
+            }
           }
         }
         return newState;

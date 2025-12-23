@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <signal.h>
 
-#define CPP_SERVER_IP "127.0.0.1"  // Thay bằng IP của C++ Server (ví dụ: "192.168.1.100")
+#define CPP_SERVER_IP "172.18.36.171"  // Thay bằng IP của C++ Server (ví dụ: "192.168.1.100")
 #define CPP_SERVER_PORT 8080
 #define LOCAL_SERVER_PORT 9000  // C Client làm server cho Node.js
 #define BUFFER_SIZE 4096

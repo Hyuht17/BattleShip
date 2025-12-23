@@ -653,11 +653,15 @@ void handle_move(Client *client, const char *coord) {
         strcpy(result, "ALREADY_HIT");
     }
     
-    // Send result to both players
+    // Send result to the player who made the move (their shot result)
     char message[BUFFER_SIZE];
-    sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\"}}\n", 
+    sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":true}}\n", 
             coord, result, ship_sunk);
     send_message(client->sock, message);
+    
+    // Send result to opponent (they need to know where they were shot at)
+    sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":false}}\n", 
+            coord, result, ship_sunk);
     send_message(opponent->sock, message);
     
     // Check game end - opponent must have ships and all ships sunk
