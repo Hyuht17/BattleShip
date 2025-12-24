@@ -14,6 +14,7 @@ function App() {
   const [challengeRequest, setChallengeRequest] = useState(null); // {challenger: string}
   const [gameResult, setGameResult] = useState(null); // {result: 'WIN'|'LOSE', reason: string, opponent: string}
   const [drawRequest, setDrawRequest] = useState(null); // {from: username}
+  const [matchFound, setMatchFound] = useState(null); // {opponent: string, elo: number}
   const socketRef = useRef(null);
   const opponentRef = useRef(null); // Store opponent name to avoid stale closure
 
@@ -158,6 +159,24 @@ function App() {
         case 'DRAW_REJECTED':
           console.log('[DRAW_REJECTED]');
           alert('Đối thủ từ chối đề nghị hòa');
+          break;
+
+        case 'MATCH_FOUND':
+          console.log('[MATCH_FOUND]', payload);
+          setMatchFound({
+            opponent: payload.opponent,
+            elo: payload.elo
+          });
+          break;
+
+        case 'OPPONENT_READY':
+          console.log('[OPPONENT_READY]', payload);
+          // Could show a notification
+          break;
+
+        case 'WAITING_OPPONENT':
+          console.log('[WAITING_OPPONENT]', payload);
+          // Already showing in modal
           break;
 
         default:
@@ -319,6 +338,16 @@ function App() {
     setDrawRequest(null);
   };
 
+  const handleMatchReady = () => {
+    console.log('[MATCH_READY] Sending ready confirmation');
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client-message', {
+        cmd: 'MATCH_READY',
+        payload: {}
+      });
+    }
+  };
+
   const handleRematch = () => {
     if (!gameResult) return;
     
@@ -445,6 +474,26 @@ function App() {
                 Từ chối
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Match Found Modal */}
+      {matchFound && (
+        <div className="modal-overlay match-overlay">
+          <div className="match-modal">
+            <div className="match-icon">🎯</div>
+            <h2>Tìm thấy đối thủ!</h2>
+            <div className="match-info">
+              <div className="opponent-info-card">
+                <span className="opponent-name">👤 {matchFound.opponent}</span>
+                <span className="opponent-elo">⭐ {matchFound.elo} ELO</span>
+              </div>
+            </div>
+            <p className="match-instruction">Nhấn "Sẵn sàng" để bắt đầu trận đấu</p>
+            <button className="ready-button" onClick={handleMatchReady}>
+              ✓ Sẵn sàng
+            </button>
           </div>
         </div>
       )}

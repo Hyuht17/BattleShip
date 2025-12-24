@@ -71,6 +71,7 @@ typedef struct {
     int ready; // đã đặt xong tàu chưa
     int is_turn; // lượt của mình không
     int is_matching; // đang tìm trận không
+    int match_ready; // đã sẵn sàng sau khi matching
 } Client;
 
 // Game session structure
@@ -115,6 +116,7 @@ void handle_draw_reply(Client *client, const char *status);
 void handle_disconnect(Client *client);
 void handle_start_matching(Client *client);
 void handle_cancel_matching(Client *client);
+void handle_match_ready(Client *client);
 void try_match_players();
 
 // Utility functions
@@ -977,13 +979,25 @@ void try_match_players() {
                 
                 p1->is_matching = 0;
                 p2->is_matching = 0;
+                p1->match_ready = 0;
+                p2->match_ready = 0;
+                p1->in_game_with = p2->sock;
+                p2->in_game_with = p1->sock;
+                p1->status = PLAYER_IN_LOBBY;
+                p2->status = PLAYER_IN_LOBBY;
                 
                 printf("[MATCHING] Matched %s (ELO: %d) with %s (ELO: %d)\n",
                        p1->username, player1_elo, p2->username, player2_elo);
                 
-                pthread_mutex_unlock(&clients_mutex);
-                start_game(p1, p2);
-                pthread_mutex_lock(&clients_mutex);
+                // Send match found notification
+                char message[BUFFER_SIZE];
+                sprintf(message, "{\"cmd\":\"MATCH_FOUND\",\"payload\":{\"opponent\":\"%s\",\"elo\":%d}}\n", 
+                        p2->username, player2_elo);
+                send_message(p1->sock, message);
+                
+                sprintf(message, "{\"cmd\":\"MATCH_FOUND\",\"payload\":{\"opponent\":\"%s\",\"elo\":%d}}\n", 
+                        p1->username, player1_elo);
+                send_message(p2->sock, message);
                 
                 break;
             }
@@ -991,6 +1005,43 @@ void try_match_players() {
     }
     
     pthread_mutex_unlock(&clients_mutex);
+}
+
+void handle_match_ready(Client *client) {
+    if (client->in_game_with == 0) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"No match found\"}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    client->match_ready = 1;
+    
+    Client *opponent = get_client(client->in_game_with);
+    if (!opponent) {
+        return;
+    }
+    
+    // Notify opponent that this player is ready
+    char message[BUFFER_SIZE];
+    sprintf(message, "{\"cmd\":\"OPPONENT_READY\",\"payload\":{\"username\":\"%s\"}}\n", client->username);
+    send_message(opponent->sock, message);
+    
+    // Check if both players are ready
+    if (opponent->match_ready) {
+        printf("[MATCH_READY] Both players ready, starting game: %s vs %s\n", 
+               client->username, opponent->username);
+        
+        // Reset match_ready flags
+        client->match_ready = 0;
+        opponent->match_ready = 0;
+        
+        // Start the game
+        start_game(client, opponent);
+    } else {
+        sprintf(message, "{\"cmd\":\"WAITING_OPPONENT\",\"payload\":{\"message\":\"Đang chờ đối thủ sẵn sàng...\"}}\n");
+        send_message(client->sock, message);
+    }
 }
 
 void handle_command(Client *client, const char *cmd, const char *payload) {
@@ -1091,6 +1142,9 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
     }
     else if (strcmp(cmd, "CANCEL_MATCHING") == 0) {
         handle_cancel_matching(client);
+    }
+    else if (strcmp(cmd, "MATCH_READY") == 0) {
+        handle_match_ready(client);
     }
 }
 
@@ -1224,6 +1278,7 @@ int main() {
         client->ready = 0;
         client->is_turn = 0;
         client->is_matching = 0;
+        client->match_ready = 0;
         init_board(&client->board);
         
         add_client(client);
