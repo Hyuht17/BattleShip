@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import './LobbyScreen.css';
 import MatchHistory from './MatchHistory';
 
-function LobbyScreen({ socket, sendMessage, user }) {
+function LobbyScreen({ socket, sendMessage, user, isMatching }) {
   const [players, setPlayers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [isMatching, setIsMatching] = useState(false);
 
   useEffect(() => {
     // Request player list on mount
@@ -18,10 +17,6 @@ function LobbyScreen({ socket, sendMessage, user }) {
         if (data.cmd === 'PLAYER_LIST') {
           setPlayers(data.payload.players || []);
           setRefreshing(false);
-        } else if (data.cmd === 'MATCHING_STARTED') {
-          setIsMatching(true);
-        } else if (data.cmd === 'MATCHING_CANCELLED') {
-          setIsMatching(false);
         }
       });
     }

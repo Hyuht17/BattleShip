@@ -645,6 +645,12 @@
   margin: 20px 0;
 }
 
+.match-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
 .ready-button {
   padding: 15px 40px;
   background: linear-gradient(135deg, #4caf50, #45a049);
@@ -665,5 +671,28 @@
 }
 
 .ready-button:active {
+  transform: translateY(0);
+}
+
+.decline-button {
+  padding: 15px 40px;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.decline-button:hover {
+  background: linear-gradient(135deg, #ee5a6f, #c92a2a);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
+}
+
+.decline-button:active {
   transform: translateY(0);
 }

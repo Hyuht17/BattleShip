@@ -117,6 +117,7 @@ void handle_disconnect(Client *client);
 void handle_start_matching(Client *client);
 void handle_cancel_matching(Client *client);
 void handle_match_ready(Client *client);
+void handle_match_decline(Client *client);
 void try_match_players();
 
 // Utility functions
@@ -1044,6 +1045,34 @@ void handle_match_ready(Client *client) {
     }
 }
 
+void handle_match_decline(Client *client) {
+    if (client->in_game_with == 0) {
+        return;
+    }
+    
+    printf("[MATCH_DECLINE] %s declined match\n", client->username);
+    
+    Client *opponent = get_client(client->in_game_with);
+    if (opponent) {
+        // Notify opponent
+        char message[BUFFER_SIZE];
+        sprintf(message, "{\"cmd\":\"MATCH_DECLINED\",\"payload\":{\"message\":\"Đối thủ đã từ chối trận đấu\"}}\n");
+        send_message(opponent->sock, message);
+        
+        // Reset opponent state
+        opponent->in_game_with = 0;
+        opponent->match_ready = 0;
+        opponent->is_matching = 0;
+        opponent->status = PLAYER_ONLINE;
+    }
+    
+    // Reset this player's state
+    client->in_game_with = 0;
+    client->match_ready = 0;
+    client->is_matching = 0;
+    client->status = PLAYER_ONLINE;
+}
+
 void handle_command(Client *client, const char *cmd, const char *payload) {
     if (strcmp(cmd, "REGISTER") == 0) {
         char username[USERNAME_SIZE], password[PASSWORD_SIZE];
@@ -1145,6 +1174,9 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
     }
     else if (strcmp(cmd, "MATCH_READY") == 0) {
         handle_match_ready(client);
+    }
+    else if (strcmp(cmd, "MATCH_DECLINE") == 0) {
+        handle_match_decline(client);
     }
 }
 

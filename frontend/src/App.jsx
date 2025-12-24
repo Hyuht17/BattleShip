@@ -15,6 +15,7 @@ function App() {
   const [gameResult, setGameResult] = useState(null); // {result: 'WIN'|'LOSE', reason: string, opponent: string}
   const [drawRequest, setDrawRequest] = useState(null); // {from: username}
   const [matchFound, setMatchFound] = useState(null); // {opponent: string, elo: number}
+  const [isMatching, setIsMatching] = useState(false);
   const socketRef = useRef(null);
   const opponentRef = useRef(null); // Store opponent name to avoid stale closure
 
@@ -102,6 +103,7 @@ function App() {
         case 'GAME_START':
           console.log('[GAME_START] Opponent:', payload.opponent, 'Your turn:', payload.your_turn);
           opponentRef.current = payload.opponent; // Save opponent name
+          setMatchFound(null); // Close match found modal
           setGameState({
             opponent: payload.opponent,
             yourTurn: payload.your_turn,
@@ -161,8 +163,14 @@ function App() {
           alert('Đối thủ từ chối đề nghị hòa');
           break;
 
+        case 'MATCHING_STARTED':
+          console.log('[MATCHING_STARTED]', payload);
+          setIsMatching(true);
+          break;
+
         case 'MATCH_FOUND':
           console.log('[MATCH_FOUND]', payload);
+          setIsMatching(false);
           setMatchFound({
             opponent: payload.opponent,
             elo: payload.elo
@@ -177,6 +185,18 @@ function App() {
         case 'WAITING_OPPONENT':
           console.log('[WAITING_OPPONENT]', payload);
           // Already showing in modal
+          break;
+
+        case 'MATCH_DECLINED':
+          console.log('[MATCH_DECLINED]', payload);
+          setMatchFound(null);
+          setIsMatching(false);
+          alert(payload.message || 'Đối thủ đã từ chối trận đấu');
+          break;
+
+        case 'MATCHING_CANCELLED':
+          console.log('[MATCHING_CANCELLED]', payload);
+          setIsMatching(false);
           break;
 
         default:
@@ -348,6 +368,18 @@ function App() {
     }
   };
 
+  const handleMatchDecline = () => {
+    console.log('[MATCH_DECLINE] Declining match');
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client-message', {
+        cmd: 'MATCH_DECLINE',
+        payload: {}
+      });
+    }
+    setMatchFound(null);
+    setIsMatching(false);
+  };
+
   const handleRematch = () => {
     if (!gameResult) return;
     
@@ -442,6 +474,7 @@ function App() {
             socket={socketRef.current}
             sendMessage={sendMessage}
             user={user}
+            isMatching={isMatching}
           />
         )}
 
@@ -490,10 +523,15 @@ function App() {
                 <span className="opponent-elo">⭐ {matchFound.elo} ELO</span>
               </div>
             </div>
-            <p className="match-instruction">Nhấn "Sẵn sàng" để bắt đầu trận đấu</p>
-            <button className="ready-button" onClick={handleMatchReady}>
-              ✓ Sẵn sàng
-            </button>
+            <p className="match-instruction">Bạn có muốn chơi với đối thủ này không?</p>
+            <div className="match-buttons">
+              <button className="ready-button" onClick={handleMatchReady}>
+                ✓ Sẵn sàng
+              </button>
+              <button className="decline-button" onClick={handleMatchDecline}>
+                ✗ Từ chối
+              </button>
+            </div>
           </div>
         </div>
       )}
