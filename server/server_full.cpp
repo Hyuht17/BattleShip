@@ -70,6 +70,7 @@ typedef struct {
     GameBoard board;
     int ready; // đã đặt xong tàu chưa
     int is_turn; // lượt của mình không
+    int is_matching; // đang tìm trận không
 } Client;
 
 // Game session structure
@@ -112,6 +113,9 @@ void handle_surrender(Client *client);
 void handle_draw_offer(Client *client);
 void handle_draw_reply(Client *client, const char *status);
 void handle_disconnect(Client *client);
+void handle_start_matching(Client *client);
+void handle_cancel_matching(Client *client);
+void try_match_players();
 
 // Utility functions
 void init_board(GameBoard *board) {
@@ -904,6 +908,91 @@ void handle_draw_reply(Client *client, const char *status) {
     }
 }
 
+// Matching functions
+void handle_start_matching(Client *client) {
+    if (client->status != PLAYER_ONLINE) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":400,\"message\":\"Cannot start matching\"}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    client->is_matching = 1;
+    client->status = PLAYER_IN_LOBBY;
+    
+    char response[BUFFER_SIZE];
+    sprintf(response, "{\"cmd\":\"MATCHING_STARTED\",\"payload\":{\"message\":\"Đang tìm đối thủ...\"}}\n");
+    send_message(client->sock, response);
+    
+    printf("[MATCHING] %s started matching (ELO: %d)\n", client->username, get_player_elo(client->username));
+    
+    // Try to match immediately
+    try_match_players();
+}
+
+void handle_cancel_matching(Client *client) {
+    if (!client->is_matching) {
+        return;
+    }
+    
+    client->is_matching = 0;
+    client->status = PLAYER_ONLINE;
+    
+    char response[BUFFER_SIZE];
+    sprintf(response, "{\"cmd\":\"MATCHING_CANCELLED\",\"payload\":{\"message\":\"Đã hủy tìm trận\"}}\n");
+    send_message(client->sock, response);
+    
+    printf("[MATCHING] %s cancelled matching\n", client->username);
+}
+
+void try_match_players() {
+    pthread_mutex_lock(&clients_mutex);
+    
+    // Find all players in matching queue
+    Client *matching_players[MAX_CLIENTS];
+    int matching_count = 0;
+    
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i] != NULL && clients[i]->is_matching) {
+            matching_players[matching_count++] = clients[i];
+        }
+    }
+    
+    // Try to match players with similar ELO (±100)
+    for (int i = 0; i < matching_count - 1; i++) {
+        if (!matching_players[i]->is_matching) continue; // Already matched
+        
+        int player1_elo = get_player_elo(matching_players[i]->username);
+        
+        for (int j = i + 1; j < matching_count; j++) {
+            if (!matching_players[j]->is_matching) continue;
+            
+            int player2_elo = get_player_elo(matching_players[j]->username);
+            int elo_diff = abs(player1_elo - player2_elo);
+            
+            if (elo_diff <= 100) {
+                // Match found!
+                Client *p1 = matching_players[i];
+                Client *p2 = matching_players[j];
+                
+                p1->is_matching = 0;
+                p2->is_matching = 0;
+                
+                printf("[MATCHING] Matched %s (ELO: %d) with %s (ELO: %d)\n",
+                       p1->username, player1_elo, p2->username, player2_elo);
+                
+                pthread_mutex_unlock(&clients_mutex);
+                start_game(p1, p2);
+                pthread_mutex_lock(&clients_mutex);
+                
+                break;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&clients_mutex);
+}
+
 void handle_command(Client *client, const char *cmd, const char *payload) {
     if (strcmp(cmd, "REGISTER") == 0) {
         char username[USERNAME_SIZE], password[PASSWORD_SIZE];
@@ -996,6 +1085,12 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
         char status[20];
         sscanf(payload, "{\"status\":\"%[^\"]\"}", status);
         handle_draw_reply(client, status);
+    }
+    else if (strcmp(cmd, "START_MATCHING") == 0) {
+        handle_start_matching(client);
+    }
+    else if (strcmp(cmd, "CANCEL_MATCHING") == 0) {
+        handle_cancel_matching(client);
     }
 }
 
@@ -1128,6 +1223,7 @@ int main() {
         client->in_game_with = 0;
         client->ready = 0;
         client->is_turn = 0;
+        client->is_matching = 0;
         init_board(&client->board);
         
         add_client(client);

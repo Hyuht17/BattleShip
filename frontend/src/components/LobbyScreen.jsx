@@ -6,6 +6,7 @@ function LobbyScreen({ socket, sendMessage, user }) {
   const [players, setPlayers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [isMatching, setIsMatching] = useState(false);
 
   useEffect(() => {
     // Request player list on mount
@@ -17,6 +18,10 @@ function LobbyScreen({ socket, sendMessage, user }) {
         if (data.cmd === 'PLAYER_LIST') {
           setPlayers(data.payload.players || []);
           setRefreshing(false);
+        } else if (data.cmd === 'MATCHING_STARTED') {
+          setIsMatching(true);
+        } else if (data.cmd === 'MATCHING_CANCELLED') {
+          setIsMatching(false);
         }
       });
     }
@@ -48,6 +53,22 @@ function LobbyScreen({ socket, sendMessage, user }) {
     }
   };
 
+  const handleStartMatching = () => {
+    console.log('[LOBBY] Starting matching...');
+    sendMessage({
+      cmd: 'START_MATCHING',
+      payload: {}
+    });
+  };
+
+  const handleCancelMatching = () => {
+    console.log('[LOBBY] Cancelling matching...');
+    sendMessage({
+      cmd: 'CANCEL_MATCHING',
+      payload: {}
+    });
+  };
+
   return (
     <div className="lobby-screen">
       <div className="lobby-container">
@@ -62,6 +83,21 @@ function LobbyScreen({ socket, sendMessage, user }) {
             >
               📊 Lịch sử
             </button>
+            {isMatching ? (
+              <button 
+                onClick={handleCancelMatching}
+                className="matching-button active"
+              >
+                ⏸️ Hủy tìm trận
+              </button>
+            ) : (
+              <button 
+                onClick={handleStartMatching}
+                className="matching-button"
+              >
+                🎯 Tìm trận (±100 ELO)
+              </button>
+            )}
             <button 
               onClick={refreshPlayerList} 
               className="refresh-button"
@@ -71,6 +107,13 @@ function LobbyScreen({ socket, sendMessage, user }) {
             </button>
           </div>
         </div>
+
+        {isMatching && (
+          <div className="matching-indicator">
+            <div className="matching-spinner"></div>
+            <span>Đang tìm đối thủ có ELO tương đương (±100)...</span>
+          </div>
+        )}
 
         <div className="players-list">
           {players.length === 0 ? (

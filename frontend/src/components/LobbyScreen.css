@@ -79,6 +79,64 @@
   cursor: not-allowed;
 }
 
+.matching-button {
+  padding: 0.5rem 1.25rem;
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(245, 87, 108, 0.3);
+}
+
+.matching-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.5);
+}
+
+.matching-button.active {
+  background: linear-gradient(135deg, #ff9800, #ff5722);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(255, 152, 0, 0.6);
+  }
+}
+
+.matching-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, rgba(240, 147, 251, 0.1), rgba(245, 87, 108, 0.1));
+  border-radius: 10px;
+  border: 2px solid rgba(245, 87, 108, 0.3);
+  color: #f5576c;
+  font-weight: 600;
+}
+
+.matching-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(245, 87, 108, 0.3);
+  border-top-color: #f5576c;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .players-list {
   min-height: 300px;
 }

@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <signal.h>
+#include <netdb.h>  // Thêm để hỗ trợ getaddrinfo (domain name resolution)
 
 #define CPP_SERVER_IP "172.18.36.171"  // Thay bằng IP của C++ Server (ví dụ: "192.168.1.100")
 #define CPP_SERVER_PORT 8080
@@ -163,10 +164,11 @@ int main(int argc, char *argv[]) {
     int local_port = LOCAL_SERVER_PORT;
     
     // Cho phép override từ command line
-    // Usage: ./client [local_port] [server_ip] [server_port]
+    // Usage: ./client [local_port] [server_ip/domain] [server_port]
     // Ví dụ: ./client 9001
     // Ví dụ: ./client 9001 192.168.1.100
-    // Ví dụ: ./client 9001 192.168.1.100 8080
+    // Ví dụ: ./client 9001 example.com
+    // Ví dụ: ./client 9001 server.local 8080
     if (argc >= 2) {
         local_port = atoi(argv[1]);
     }
@@ -184,32 +186,53 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "[C_CLIENT] Starting C client bridge...\n");
     fprintf(stderr, "[C_CLIENT] Local TCP server will listen on port %d\n", local_port);
     
-    // 1. Kết nối tới C++ server (port 8080)
+    // 1. Kết nối tới C++ server (hỗ trợ cả IP và domain name)
     cpp_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (cpp_sock < 0) {
         fprintf(stderr, "[C_CLIENT] Socket creation failed: %s\n", strerror(errno));
         return 1;
     }
     
-    memset(&cpp_server_addr, 0, sizeof(cpp_server_addr));
-    cpp_server_addr.sin_family = AF_INET;
-    cpp_server_addr.sin_port = htons(server_port);
+    fprintf(stderr, "[C_CLIENT] Connecting to C++ server %s:%d...\n", server_ip, server_port);
     
-    if (inet_pton(AF_INET, server_ip, &cpp_server_addr.sin_addr) <= 0) {
-        fprintf(stderr, "[C_CLIENT] Invalid C++ server address\n");
+    // Sử dụng getaddrinfo để hỗ trợ cả IP address và domain name
+    struct addrinfo hints, *res, *p;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;        // IPv4
+    hints.ai_socktype = SOCK_STREAM;  // TCP
+    
+    char port_str[10];
+    sprintf(port_str, "%d", server_port);
+    
+    int status = getaddrinfo(server_ip, port_str, &hints, &res);
+    if (status != 0) {
+        fprintf(stderr, "[C_CLIENT] getaddrinfo error: %s\n", gai_strerror(status));
         close(cpp_sock);
         return 1;
     }
     
-    fprintf(stderr, "[C_CLIENT] Connecting to C++ server %s:%d...\n", server_ip, server_port);
+    // Thử kết nối với từng địa chỉ trả về (nếu domain có nhiều IP)
+    int connected = 0;
+    for (p = res; p != NULL; p = p->ai_next) {
+        if (connect(cpp_sock, p->ai_addr, p->ai_addrlen) == 0) {
+            connected = 1;
+            
+            // Lấy IP đã kết nối để log
+            struct sockaddr_in *addr = (struct sockaddr_in *)p->ai_addr;
+            char ip_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &addr->sin_addr, ip_str, INET_ADDRSTRLEN);
+            fprintf(stderr, "[C_CLIENT] Connected to C++ server successfully (%s)\n", ip_str);
+            break;
+        }
+    }
     
-    if (connect(cpp_sock, (struct sockaddr *)&cpp_server_addr, sizeof(cpp_server_addr)) < 0) {
+    freeaddrinfo(res);
+    
+    if (!connected) {
         fprintf(stderr, "[C_CLIENT] Connection to C++ server failed: %s\n", strerror(errno));
         close(cpp_sock);
         return 1;
     }
-    
-    fprintf(stderr, "[C_CLIENT] Connected to C++ server successfully\n");
     
     // 2. Tạo TCP server để accept Node.js clients (port 9000)
     local_server_fd = socket(AF_INET, SOCK_STREAM, 0);
