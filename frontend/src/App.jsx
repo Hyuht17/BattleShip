@@ -16,6 +16,7 @@ function App() {
   const [drawRequest, setDrawRequest] = useState(null); // {from: username}
   const [matchFound, setMatchFound] = useState(null); // {opponent: string, elo: number}
   const [isMatching, setIsMatching] = useState(false);
+  const [notification, setNotification] = useState(null); // {title: string, message: string, type: 'info'|'error'|'success'|'warning'}
   const socketRef = useRef(null);
   const opponentRef = useRef(null); // Store opponent name to avoid stale closure
 
@@ -78,7 +79,11 @@ function App() {
 
     socketRef.current.on('server-error', (data) => {
       console.error('Server error:', data);
-      alert('Server error: ' + data.error);
+      setNotification({
+        title: 'Lỗi Server',
+        message: data.error,
+        type: 'error'
+      });
     });
 
     // Game events - Define handler inline to avoid stale closure
@@ -97,7 +102,11 @@ function App() {
 
         case 'REGISTER_SUCCESS':
           console.log('[REGISTER SUCCESS]');
-          alert('Registration successful! Please login.');
+          setNotification({
+            title: 'Đăng ký thành công',
+            message: 'Đăng ký thành công! Vui lòng đăng nhập.',
+            type: 'success'
+          });
           break;
 
         case 'GAME_START':
@@ -149,7 +158,11 @@ function App() {
 
         case 'SYSTEM_MSG':
           if (payload.code !== 200) {
-            alert(payload.message);
+            setNotification({
+              title: 'Thông báo',
+              message: payload.message,
+              type: 'error'
+            });
           }
           break;
 
@@ -160,7 +173,11 @@ function App() {
 
         case 'DRAW_REJECTED':
           console.log('[DRAW_REJECTED]');
-          alert('Đối thủ từ chối đề nghị hòa');
+          setNotification({
+            title: 'Đề nghị hòa bị từ chối',
+            message: 'Đối thủ đã từ chối đề nghị hòa của bạn.',
+            type: 'warning'
+          });
           break;
 
         case 'MATCHING_STARTED':
@@ -191,7 +208,11 @@ function App() {
           console.log('[MATCH_DECLINED]', payload);
           setMatchFound(null);
           setIsMatching(false);
-          alert(payload.message || 'Đối thủ đã từ chối trận đấu');
+          setNotification({
+            title: 'Trận đấu bị từ chối',
+            message: payload.message || 'Đối thủ đã từ chối trận đấu.',
+            type: 'warning'
+          });
           break;
 
         case 'MATCHING_CANCELLED':
@@ -247,7 +268,11 @@ function App() {
       });
 
       if (ship_sunk) {
-        alert(`${ship_sunk} was sunk!`);
+        setNotification({
+          title: 'Tàu bị đánh chìm!',
+          message: `${ship_sunk} đã bị đánh chìm!`,
+          type: 'info'
+        });
       }
     };
 
@@ -441,26 +466,39 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>🚢 BattleShip Network Game</h1>
-        <div className={`status ${connected ? 'connected' : 'disconnected'}`}>
-          {connected ? '🟢 Connected' : '🔴 Disconnected'}
-        </div>
-        {user && (
-          <div className="user-info">
-            <span className="username">👤 {user.username}</span>
-            {user.elo !== undefined && (
-              <span className="user-elo">⭐ {user.elo} ELO</span>
-            )}
-            <button className="logout-btn" onClick={handleLogout}>
-              Đăng xuất
-            </button>
+    <div className="w-full min-h-screen bg-white">
+      {screen !== 'lobby' && (
+      <header className="w-full max-w-7xl mx-auto px-5 py-4 bg-gradient-to-r from-purple-600 to-purple-800 rounded-lg mb-5 mt-5 flex justify-between items-center shadow-md">
+        <h1 className="text-2xl font-bold text-white">BattleShip Network Game</h1>
+        <div className="flex items-center gap-4">
+          <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
+            connected 
+              ? 'bg-green-100 text-green-800 border-2 border-green-500' 
+              : 'bg-red-100 text-red-800 border-2 border-red-500'
+          }`}>
+            {connected ? 'Connected' : 'Disconnected'}
           </div>
-        )}
+          {user && (
+            <div className="flex items-center gap-3 text-white">
+              <span className="font-semibold">{user.username}</span>
+              {user.elo !== undefined && (
+                <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-bold text-yellow-300">
+                  {user.elo} ELO
+                </span>
+              )}
+              <button 
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold text-sm transition-colors"
+                onClick={handleLogout}
+              >
+                Đăng xuất
+              </button>
+            </div>
+          )}
+        </div>
       </header>
+      )}
 
-      <main className="app-main">
+      <main className="w-full">
         {screen === 'login' && (
           <LoginScreen
             onLogin={handleLogin}
@@ -475,6 +513,7 @@ function App() {
             sendMessage={sendMessage}
             user={user}
             isMatching={isMatching}
+            onLogout={handleLogout}
           />
         )}
 
@@ -513,24 +552,50 @@ function App() {
 
       {/* Match Found Modal */}
       {matchFound && (
-        <div className="modal-overlay match-overlay">
-          <div className="match-modal">
-            <div className="match-icon">🎯</div>
-            <h2>Tìm thấy đối thủ!</h2>
-            <div className="match-info">
-              <div className="opponent-info-card">
-                <span className="opponent-name">👤 {matchFound.opponent}</span>
-                <span className="opponent-elo">⭐ {matchFound.elo} ELO</span>
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4 animate-fadeIn">
+            <div className="text-center">
+              {/* Icon */}
+              <div className="w-16 h-16 mx-auto mb-6 bg-gray-800 rounded-full flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-8 h-8">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
               </div>
-            </div>
-            <p className="match-instruction">Bạn có muốn chơi với đối thủ này không?</p>
-            <div className="match-buttons">
-              <button className="ready-button" onClick={handleMatchReady}>
-                ✓ Sẵn sàng
-              </button>
-              <button className="decline-button" onClick={handleMatchDecline}>
-                ✗ Từ chối
-              </button>
+              
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Tìm thấy đối thủ!</h2>
+              
+              {/* Opponent Info */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6">
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-lg">
+                    {matchFound.opponent?.[0]?.toUpperCase() || 'O'}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-800 text-lg">{matchFound.opponent}</div>
+                    <div className="text-gray-500 text-sm">{matchFound.elo} ELO</div>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-gray-600 mb-6">Bạn có muốn chơi với đối thủ này không?</p>
+              
+              {/* Buttons */}
+              <div className="flex gap-4">
+                <button 
+                  className="flex-1 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+                  onClick={handleMatchReady}
+                >
+                  Sẵn sàng
+                </button>
+                <button 
+                  className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition-colors"
+                  onClick={handleMatchDecline}
+                >
+                  Từ chối
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -596,6 +661,51 @@ function App() {
                 onClick={handleBackToLobby}
               >
                 🏠 Về sảnh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Modal */}
+      {notification && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 animate-fadeIn">
+            <div className="text-center">
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                notification.type === 'error' ? 'bg-red-100' :
+                notification.type === 'success' ? 'bg-green-100' :
+                notification.type === 'warning' ? 'bg-yellow-100' :
+                'bg-blue-100'
+              }`}>
+                {notification.type === 'error' && (
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                {notification.type === 'success' && (
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {notification.type === 'warning' && (
+                  <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
+                {notification.type === 'info' && (
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">{notification.title}</h3>
+              <p className="text-gray-600 mb-6">{notification.message}</p>
+              <button
+                onClick={() => setNotification(null)}
+                className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Đóng
               </button>
             </div>
           </div>

@@ -15,6 +15,7 @@ function ShipPlacement({ onPlaceShips }) {
   const [currentShip, setCurrentShip] = useState(0);
   const [orientation, setOrientation] = useState('horizontal');
   const [hoverCells, setHoverCells] = useState([]);
+  const [localNotification, setLocalNotification] = useState(null);
 
   const canPlaceShip = (row, col, size, horizontal) => {
     if (horizontal) {
@@ -66,7 +67,11 @@ function ShipPlacement({ onPlaceShips }) {
     const horizontal = orientation === 'horizontal';
 
     if (!canPlaceShip(row, col, ship.size, horizontal)) {
-      alert('Cannot place ship here!');
+      setLocalNotification({
+        title: 'Không thể đặt tàu',
+        message: 'Không thể đặt tàu ở vị trí này! Vui lòng chọn vị trí khác.',
+        type: 'error'
+      });
       return;
     }
 
@@ -110,7 +115,11 @@ function ShipPlacement({ onPlaceShips }) {
 
   const handleConfirm = () => {
     if (placedShips.length !== SHIPS.length) {
-      alert('Please place all ships!');
+      setLocalNotification({
+        title: 'Chưa đặt đủ tàu',
+        message: 'Vui lòng đặt tất cả các tàu trước khi xác nhận!',
+        type: 'warning'
+      });
       return;
     }
     onPlaceShips(placedShips);
@@ -225,6 +234,51 @@ function ShipPlacement({ onPlaceShips }) {
           </div>
         </div>
       </div>
+
+      {/* Local Notification Modal */}
+      {localNotification && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 animate-fadeIn">
+            <div className="text-center">
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                localNotification.type === 'error' ? 'bg-red-100' :
+                localNotification.type === 'success' ? 'bg-green-100' :
+                localNotification.type === 'warning' ? 'bg-yellow-100' :
+                'bg-blue-100'
+              }`}>
+                {localNotification.type === 'error' && (
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                {localNotification.type === 'success' && (
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {localNotification.type === 'warning' && (
+                  <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
+                {localNotification.type === 'info' && (
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">{localNotification.title}</h3>
+              <p className="text-gray-600 mb-6">{localNotification.message}</p>
+              <button
+                onClick={() => setLocalNotification(null)}
+                className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
-import './LobbyScreen.css';
 import MatchHistory from './MatchHistory';
+import MainMenu from './MainMenu';
 
-function LobbyScreen({ socket, sendMessage, user, isMatching }) {
+function LobbyScreen({ socket, sendMessage, user, isMatching, onLogout }) {
   const [players, setPlayers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showPlayerList, setShowPlayerList] = useState(false);
 
   useEffect(() => {
-    // Request player list on mount
     refreshPlayerList();
 
-    // Listen for player list updates
     if (socket) {
       socket.on('server-message', (data) => {
         if (data.cmd === 'PLAYER_LIST') {
@@ -21,7 +20,6 @@ function LobbyScreen({ socket, sendMessage, user, isMatching }) {
       });
     }
 
-    // Auto-refresh every 5 seconds
     const interval = setInterval(() => {
       refreshPlayerList();
     }, 5000);
@@ -44,113 +42,109 @@ function LobbyScreen({ socket, sendMessage, user, isMatching }) {
         cmd: 'CHALLENGE',
         payload: { target_username: targetUsername }
       });
-      console.log('[LOBBY] Challenge sent');
     }
   };
 
-  const handleStartMatching = () => {
-    console.log('[LOBBY] Starting matching...');
-    sendMessage({
-      cmd: 'START_MATCHING',
-      payload: {}
-    });
-  };
-
-  const handleCancelMatching = () => {
-    console.log('[LOBBY] Cancelling matching...');
-    sendMessage({
-      cmd: 'CANCEL_MATCHING',
-      payload: {}
-    });
-  };
+  useEffect(() => {
+    if (showPlayerList) {
+      refreshPlayerList();
+    }
+  }, [showPlayerList]);
 
   return (
-    <div className="lobby-screen">
-      <div className="lobby-container">
-        <h2>🎮 Game Lobby</h2>
-        
-        <div className="lobby-header">
-          <h3>Available Players</h3>
-          <div className="lobby-actions">
+    <div className="w-full min-h-screen bg-white">
+      {!showPlayerList ? (
+        <MainMenu
+          socket={socket}
+          sendMessage={sendMessage}
+          user={user}
+          isMatching={isMatching}
+          onShowHistory={() => setShowHistory(true)}
+          onShowPlayerList={() => setShowPlayerList(true)}
+          onLogout={onLogout}
+        />
+      ) : (
+        <div className="w-full max-w-4xl mx-auto px-5 py-10">
+          <div className="flex items-center gap-4 mb-8">
             <button 
-              onClick={() => setShowHistory(true)}
-              className="history-button"
+              className="w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+              onClick={() => setShowPlayerList(false)}
             >
-              📊 Lịch sử
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-gray-800">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
             </button>
-            {isMatching ? (
-              <button 
-                onClick={handleCancelMatching}
-                className="matching-button active"
-              >
-                ⏸️ Hủy tìm trận
-              </button>
-            ) : (
-              <button 
-                onClick={handleStartMatching}
-                className="matching-button"
-              >
-                🎯 Tìm trận (±100 ELO)
-              </button>
-            )}
-            <button 
-              onClick={refreshPlayerList} 
-              className="refresh-button"
-              disabled={refreshing}
-            >
-              {refreshing ? '🔄 Refreshing...' : '🔄 Refresh'}
-            </button>
+            <h2 className="text-3xl font-bold text-gray-800">Available Players</h2>
           </div>
-        </div>
 
-        {isMatching && (
-          <div className="matching-indicator">
-            <div className="matching-spinner"></div>
-            <span>Đang tìm đối thủ có ELO tương đương (±100)...</span>
-          </div>
-        )}
-
-        <div className="players-list">
-          {players.length === 0 ? (
-            <div className="no-players">
-              <p>No other players online</p>
-              <p className="hint">Waiting for opponents to join...</p>
-            </div>
-          ) : (
-            <div className="players-grid">
-              {players.map((player, index) => (
-                <div key={index} className="player-card">
-                  <div className="player-info">
-                    <span className="player-icon">👤</span>
-                    <div className="player-details">
-                      <span className="player-name">{player.username}</span>
-                      {player.elo !== undefined && (
-                        <span className="player-elo">⭐ {player.elo} ELO</span>
-                      )}
-                    </div>
-                    <span className={`player-status status-${player.status}`}>
-                      {player.status === 1 ? '🟢 Online' : 
-                       player.status === 2 ? '🟡 In Lobby' : '🔴 In Game'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleChallenge(player.username)}
-                    className="challenge-button"
-                    disabled={player.status === 3}
-                  >
-                    ⚔️ Challenge
-                  </button>
-                </div>
-              ))}
+          {isMatching && (
+            <div className="flex items-center justify-center gap-4 p-4 mb-6 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 font-medium">
+              <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin"></div>
+              <span>Đang tìm đối thủ có ELO tương đương (±100)...</span>
             </div>
           )}
-        </div>
 
-        <div className="lobby-info">
-          <p>💡 Click "Challenge" to start a game with another player</p>
-          <p>💡 You will be notified when someone challenges you</p>
+          <div className="min-h-[300px] mb-6">
+            {players.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <p className="text-lg mb-2">No other players online</p>
+                <p className="text-sm">Waiting for opponents to join...</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {players.map((player, index) => (
+                  <div key={index} className="bg-gray-50 border border-gray-300 rounded-lg p-4 flex items-center gap-4 hover:border-gray-400 transition-colors">
+                    {/* Avatar */}
+                    <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                      {player.username?.[0]?.toUpperCase() || 'P'}
+                    </div>
+                    
+                    {/* Player Name */}
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-gray-800 font-semibold text-base truncate">{player.username || 'Unknown'}</span>
+                    </div>
+                    
+                    {/* ELO */}
+                    <div className="flex flex-col">
+                      <span className="text-gray-500 text-lg font-medium">{player.elo !== undefined ? player.elo : '0'}</span>
+                      <span className="text-gray-500 text-xs">ELO</span>
+                    </div>
+                    
+                    {/* Status */}
+                    <span className={`text-xs font-medium px-3 py-1 rounded whitespace-nowrap ${
+                      player.status === 1 ? 'bg-green-400 text-white' :
+                      player.status === 2 ? 'bg-yellow-400 text-white' :
+                      'bg-red-400 text-white'
+                    }`}>
+                      {player.status === 1 ? 'Online' : 
+                       player.status === 2 ? 'In Lobby' : 'In Game'}
+                    </span>
+                    
+                    {/* Challenge Button */}
+                    <button
+                      onClick={() => handleChallenge(player.username)}
+                      disabled={player.status === 3}
+                      className="ml-auto px-4 py-2 bg-gray-700 text-white rounded font-semibold text-sm hover:bg-gray-800 transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    >
+                      Challenge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-center">
+            <button 
+              onClick={refreshPlayerList} 
+              disabled={refreshing}
+              className="px-6 py-2 bg-gray-100 text-gray-800 border border-gray-300 rounded-md font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       
       {showHistory && (
         <MatchHistory 
