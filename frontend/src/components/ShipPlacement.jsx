@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import './ShipPlacement.css';
+import React from 'react';
 
 const SHIPS = [
   { name: 'Carrier', size: 5, symbol: '🛳️' },
@@ -113,6 +113,93 @@ function ShipPlacement({ onPlaceShips }) {
     setHoverCells([]);
   };
 
+  const handleRandomPlace = () => {
+    // Reset board first
+    const newBoard = Array(10).fill(null).map(() => Array(10).fill(0));
+    const newPlacedShips = [];
+    
+    // Try to place all ships randomly
+    const shuffledShips = [...SHIPS].sort(() => Math.random() - 0.5);
+    let attempts = 0;
+    const maxAttempts = 1000;
+
+    for (const ship of shuffledShips) {
+      let placed = false;
+      let attemptCount = 0;
+
+      while (!placed && attemptCount < maxAttempts) {
+        attemptCount++;
+        attempts++;
+
+        // Random position and orientation
+        const row = Math.floor(Math.random() * 10);
+        const col = Math.floor(Math.random() * 10);
+        const horizontal = Math.random() > 0.5;
+
+        // Check if can place
+        if (canPlaceShipOnBoard(newBoard, row, col, ship.size, horizontal)) {
+          // Place ship
+          for (let i = 0; i < ship.size; i++) {
+            const r = horizontal ? row : row + i;
+            const c = horizontal ? col + i : col;
+            newBoard[r][c] = 1; // Mark as occupied
+          }
+
+          newPlacedShips.push({
+            name: ship.name,
+            size: ship.size,
+            symbol: ship.symbol,
+            row,
+            col,
+            horizontal
+          });
+
+          placed = true;
+        }
+      }
+
+      if (!placed) {
+        // If we can't place all ships, reset and try again
+        setLocalNotification({
+          title: 'Không thể đặt ngẫu nhiên',
+          message: 'Không thể tìm vị trí phù hợp. Vui lòng thử lại!',
+          type: 'warning'
+        });
+        return;
+      }
+    }
+
+    // Update board with ship indices for display
+    const displayBoard = Array(10).fill(null).map(() => Array(10).fill(0));
+    newPlacedShips.forEach((ship, shipIndex) => {
+      for (let i = 0; i < ship.size; i++) {
+        const r = ship.horizontal ? ship.row : ship.row + i;
+        const c = ship.horizontal ? ship.col + i : ship.col;
+        displayBoard[r][c] = shipIndex + 1;
+      }
+    });
+
+    setBoard(displayBoard);
+    setPlacedShips(newPlacedShips);
+    setCurrentShip(SHIPS.length);
+    setHoverCells([]);
+  };
+
+  const canPlaceShipOnBoard = (board, row, col, size, horizontal) => {
+    if (horizontal) {
+      if (col + size > 10) return false;
+      for (let i = 0; i < size; i++) {
+        if (board[row][col + i] !== 0) return false;
+      }
+    } else {
+      if (row + size > 10) return false;
+      for (let i = 0; i < size; i++) {
+        if (board[row + i][col] !== 0) return false;
+      }
+    }
+    return true;
+  };
+
   const handleConfirm = () => {
     if (placedShips.length !== SHIPS.length) {
       setLocalNotification({
@@ -126,15 +213,19 @@ function ShipPlacement({ onPlaceShips }) {
   };
 
   const getCellClass = (row, col) => {
-    let className = 'cell';
-
+    let className = "aspect-square bg-white text-lg font-bold flex items-center justify-center transition-all relative cursor-crosshair";
+    
     const hoverCell = hoverCells.find(c => c.row === row && c.col === col);
     if (hoverCell) {
-      className += hoverCell.valid ? ' hover-valid' : ' hover-invalid';
+      if (hoverCell.valid) {
+        className += " bg-green-100 border-2 border-green-400 cursor-pointer";
+      } else {
+        className += " bg-red-100 border-2 border-red-400 cursor-not-allowed";
+      }
     }
 
     if (board[row][col] > 0) {
-      className += ' ship';
+      className += " bg-green-200 cursor-default";
     }
 
     return className;
@@ -149,64 +240,98 @@ function ShipPlacement({ onPlaceShips }) {
   };
 
   return (
-    <div className="ship-placement">
-      <h3>📍 Place Your Ships</h3>
+    <div className="w-full max-w-7xl mx-auto bg-white p-6">
+      <h3 className="text-2xl font-bold text-gray-800 mb-6">📍 Place Your Ships</h3>
 
-      <div className="placement-content">
-        <div className="placement-board">
-          <div className="board-grid">
-            <div className="cell header"></div>
-            {Array.from({ length: 10 }, (_, i) => (
-              <div key={`col-${i}`} className="cell header">{i}</div>
-            ))}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Board */}
+        <div className="flex-1">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+            <div className="grid grid-cols-11 gap-0.5 bg-gray-300 p-0.5 rounded-lg">
+              <div className="aspect-square bg-gray-600 text-white text-xs font-bold flex items-center justify-center rounded"></div>
+              {Array.from({ length: 10 }, (_, i) => (
+                <div key={`col-${i}`} className="aspect-square bg-gray-600 text-white text-xs font-bold flex items-center justify-center rounded">
+                  {i}
+                </div>
+              ))}
 
-            {'ABCDEFGHIJ'.split('').map((row, rowIndex) => (
-              <>
-                <div key={`row-${row}`} className="cell header">{row}</div>
-                {Array.from({ length: 10 }, (_, colIndex) => (
-                  <div
-                    key={`${row}-${colIndex}`}
-                    className={getCellClass(rowIndex, colIndex)}
-                    onClick={() => handleCellClick(rowIndex, colIndex)}
-                    onContextMenu={(e) => handleRightClick(e, rowIndex, colIndex)}
-                    onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
-                    onMouseLeave={() => setHoverCells([])}
-                  >
-                    {board[rowIndex][colIndex] > 0 && getShipSymbol(rowIndex, colIndex)}
+              {'ABCDEFGHIJ'.split('').map((row, rowIndex) => (
+                <React.Fragment key={`row-${row}`}>
+                  <div className="aspect-square bg-gray-600 text-white text-xs font-bold flex items-center justify-center rounded">
+                    {row}
                   </div>
-                ))}
-              </>
-            ))}
+                  {Array.from({ length: 10 }, (_, colIndex) => (
+                    <div
+                      key={`${row}-${colIndex}`}
+                      className={getCellClass(rowIndex, colIndex)}
+                      onClick={() => handleCellClick(rowIndex, colIndex)}
+                      onContextMenu={(e) => handleRightClick(e, rowIndex, colIndex)}
+                      onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
+                      onMouseLeave={() => setHoverCells([])}
+                    >
+                      {board[rowIndex][colIndex] > 0 && getShipSymbol(rowIndex, colIndex)}
+                    </div>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="placement-controls">
-          <div className="ships-list">
-            <h4>Ships to Place:</h4>
-            {SHIPS.map((ship, index) => (
-              <div
-                key={ship.name}
-                className={`ship-item ${index === currentShip ? 'current' : ''} ${index < currentShip ? 'placed' : ''}`}
-              >
-                <span className="ship-symbol">{ship.symbol}</span>
-                <span className="ship-name">{ship.name}</span>
-                <span className="ship-size">({ship.size} cells)</span>
-                {index < currentShip && <span className="checkmark">✓</span>}
-              </div>
-            ))}
+        {/* Controls */}
+        <div className="w-full lg:w-80 flex flex-col gap-4">
+          {/* Ships List */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+            <h4 className="text-sm font-semibold text-gray-600 uppercase mb-3">Ships to Place:</h4>
+            <div className="space-y-2">
+              {SHIPS.map((ship, index) => (
+                <div
+                  key={ship.name}
+                  className={`p-3 rounded-lg border-2 transition-all ${
+                    index === currentShip 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : index < currentShip 
+                        ? 'border-green-500 bg-green-50' 
+                        : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{ship.symbol}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-gray-800">{ship.name}</span>
+                        <span className="text-xs text-gray-500">({ship.size} cells)</span>
+                      </div>
+                    </div>
+                    {index < currentShip && (
+                      <span className="text-green-600 font-bold">✓</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="orientation-toggle">
-            <label>Orientation:</label>
-            <div className="toggle-buttons">
+          {/* Orientation Toggle */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+            <label className="block text-sm font-semibold text-gray-600 uppercase mb-3">Orientation:</label>
+            <div className="flex gap-2">
               <button
-                className={orientation === 'horizontal' ? 'active' : ''}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  orientation === 'horizontal'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
                 onClick={() => setOrientation('horizontal')}
               >
                 ↔️ Horizontal
               </button>
               <button
-                className={orientation === 'vertical' ? 'active' : ''}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold transition-colors ${
+                  orientation === 'vertical'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
                 onClick={() => setOrientation('vertical')}
               >
                 ↕️ Vertical
@@ -214,23 +339,40 @@ function ShipPlacement({ onPlaceShips }) {
             </div>
           </div>
 
-          <div className="action-buttons">
-            <button onClick={handleReset} className="reset-button">
-              🔄 Reset
-            </button>
-            <button
-              onClick={handleConfirm}
-              className="confirm-button"
-              disabled={placedShips.length !== SHIPS.length}
-            >
-              ✓ Confirm Placement
-            </button>
+          {/* Action Buttons */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={handleRandomPlace}
+                className="w-full px-4 py-2 bg-purple-500 text-white rounded-lg font-semibold hover:bg-purple-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>🎲</span>
+                <span>Random Place</span>
+              </button>
+              <button 
+                onClick={handleReset}
+                className="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
+              >
+                🔄 Reset
+              </button>
+              <button
+                onClick={handleConfirm}
+                disabled={placedShips.length !== SHIPS.length}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+              >
+                ✓ Confirm Placement
+              </button>
+            </div>
           </div>
 
-          <div className="placement-hint">
-            <p>💡 <strong>Left-click</strong> to place the current ship</p>
-            <p>💡 <strong>Right-click</strong> to rotate orientation</p>
-            <p>💡 Or use the buttons to toggle orientation</p>
+          {/* Hints */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-blue-800 mb-2">💡 Tips:</h4>
+            <ul className="text-xs text-blue-700 space-y-1">
+              <li>• <strong>Left-click</strong> to place the current ship</li>
+              <li>• <strong>Right-click</strong> to rotate orientation</li>
+              <li>• Or use the buttons to toggle orientation</li>
+            </ul>
           </div>
         </div>
       </div>

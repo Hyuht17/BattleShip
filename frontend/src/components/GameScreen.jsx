@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import './GameScreen.css';
 import GameBoard from './GameBoard';
 import ShipPlacement from './ShipPlacement';
 import ChatBox from './ChatBox';
@@ -172,145 +171,189 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
     }
   }, [gameState.myBoard, gameState.opponentBoard]);
 
-  return (
-    <div className="game-screen">
-      <div className="game-header">
-        <div className="header-top">
-          <h2>⚓ Naval Battle</h2>
-          <span className={`turn-indicator ${gameState.yourTurn ? 'your-turn' : 'opponent-turn'}`}>
-            {gameState.yourTurn ? '🟢 YOUR TURN' : '🔴 OPPONENT\'S TURN'}
-          </span>
-        </div>
-        
-        <div className="game-stats">
-          <div className="stat-card player-stat">
-            <div className="stat-header">
-              <span className="stat-icon">👤</span>
-              <span className="stat-player">You</span>
-            </div>
-            <div className="stat-content">
-              <div className="stat-item">
-                <span className="stat-label">Ships</span>
-                <span className="stat-value">{stats.myShipsRemaining}/5 ⛵</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Hits</span>
-                <span className="stat-value hit">{stats.myHits} 💥</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Misses</span>
-                <span className="stat-value miss">{stats.myMisses} 💧</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Accuracy</span>
-                <span className="stat-value">
-                  {stats.myHits + stats.myMisses > 0 
-                    ? Math.round((stats.myHits / (stats.myHits + stats.myMisses)) * 100)
-                    : 0}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="vs-divider">
-            <span className="vs-text">VS</span>
-          </div>
-
-          <div className="stat-card opponent-stat">
-            <div className="stat-header">
-              <span className="stat-icon">🎯</span>
-              <span className="stat-player">{gameState.opponent}</span>
-            </div>
-            <div className="stat-content">
-              <div className="stat-item">
-                <span className="stat-label">Ships</span>
-                <span className="stat-value">{stats.opponentShipsRemaining}/5 ⛵</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Hits</span>
-                <span className="stat-value hit">{stats.opponentHits} 💥</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Misses</span>
-                <span className="stat-value miss">{stats.opponentMisses} 💧</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Accuracy</span>
-                <span className="stat-value">
-                  {stats.opponentHits + stats.opponentMisses > 0 
-                    ? Math.round((stats.opponentHits / (stats.opponentHits + stats.opponentMisses)) * 100)
-                    : 0}%
-                </span>
-              </div>
-            </div>
-          </div>
+  // Safety check for gameState
+  if (!gameState) {
+    return (
+      <div className="w-full min-h-screen bg-white p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading game...</p>
         </div>
       </div>
+    );
+  }
 
-      {gameState.phase === 'placing' ? (
-        <ShipPlacement onPlaceShips={handlePlaceShips} />
-      ) : (
-        <div className="game-content">
-          <div className="game-main">
-            <div className="boards-container">
-              <div className="board-section your-board">
-                <div className="board-header">
-                  <h3>🛡️ Your Fleet</h3>
-                  <div className="board-status">
-                    <span className="status-indicator defensive">Defensive</span>
-                  </div>
-                </div>
-                <GameBoard
-                  board={gameState.myBoard}
-                  isOwnBoard={true}
-                  onCellClick={() => {}}
-                  disabled={true}
-                  ships={gameState.myShips}
-                />
+  return (
+    <div className="w-full min-h-screen bg-white p-4">
+      <div className="w-full max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-gray-200">
+            <h2 className="text-3xl font-bold text-gray-800">⚓ Naval Battle</h2>
+            <span className={`px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wide ${
+              gameState.yourTurn 
+                ? 'bg-green-500 text-white animate-pulse' 
+                : 'bg-red-500 text-white'
+            }`}>
+              {gameState.yourTurn ? '🟢 YOUR TURN' : '🔴 OPPONENT\'S TURN'}
+            </span>
+          </div>
+          
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            {/* Player Stats */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-300">
+                <span className="text-2xl">👤</span>
+                <span className="text-lg font-bold text-gray-800 uppercase">You</span>
               </div>
-
-              <div className="board-section opponent-board">
-                <div className="board-header">
-                  <h3>⚔️ Enemy Waters</h3>
-                  <div className="board-status">
-                    <span className={`status-indicator ${gameState.yourTurn ? 'offensive-active' : 'offensive-waiting'}`}>
-                      {gameState.yourTurn ? 'Fire at will!' : 'Waiting...'}
-                    </span>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Ships</span>
+                  <span className="text-base font-semibold text-gray-800">{stats.myShipsRemaining}/5 ⛵</span>
                 </div>
-                <GameBoard
-                  board={gameState.opponentBoard}
-                  isOwnBoard={false}
-                  onCellClick={handleCellClick}
-                  disabled={!gameState.yourTurn}
-                  selectedCell={selectedCell}
-                />
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Hits</span>
+                  <span className="text-base font-semibold text-red-600">{stats.myHits} 💥</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Misses</span>
+                  <span className="text-base font-semibold text-blue-600">{stats.myMisses} 💧</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Accuracy</span>
+                  <span className="text-base font-semibold text-gray-800">
+                    {stats.myHits + stats.myMisses > 0 
+                      ? Math.round((stats.myHits / (stats.myHits + stats.myMisses)) * 100)
+                      : 0}%
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="right-panel">
-              <div className="game-actions">
-                <button className="action-btn surrender-btn" onClick={handleSurrender}>
-                  <span className="btn-icon">🏳️</span>
-                  <span className="btn-text">Surrender</span>
-                </button>
-                <button className="action-btn draw-btn" onClick={handleDrawOffer}>
-                  <span className="btn-icon">🤝</span>
-                  <span className="btn-text">Draw Offer</span>
-                </button>
+            {/* VS Divider */}
+            <div className="flex items-center justify-center">
+              <span className="text-2xl font-bold text-gray-400">VS</span>
+            </div>
+
+            {/* Opponent Stats */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-300">
+                <span className="text-2xl">🎯</span>
+                <span className="text-lg font-bold text-gray-800 uppercase truncate">{gameState.opponent || 'Opponent'}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Ships</span>
+                  <span className="text-base font-semibold text-gray-800">{stats.opponentShipsRemaining}/5 ⛵</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Hits</span>
+                  <span className="text-base font-semibold text-red-600">{stats.opponentHits} 💥</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Misses</span>
+                  <span className="text-base font-semibold text-blue-600">{stats.opponentMisses} 💧</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 uppercase mb-1">Accuracy</span>
+                  <span className="text-base font-semibold text-gray-800">
+                    {stats.opponentHits + stats.opponentMisses > 0 
+                      ? Math.round((stats.opponentHits / (stats.opponentHits + stats.opponentMisses)) * 100)
+                      : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {gameState.phase === 'placing' ? (
+          <ShipPlacement onPlaceShips={handlePlaceShips} />
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Boards Container */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Your Board */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-800">🛡️ Your Fleet</h3>
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">Defensive</span>
+                </div>
+                {gameState.myBoard ? (
+                  <GameBoard
+                    board={gameState.myBoard}
+                    isOwnBoard={true}
+                    onCellClick={() => {}}
+                    disabled={true}
+                    ships={gameState.myShips}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-gray-400">Loading board...</div>
+                )}
               </div>
 
-              <div className="chat-section">
+              {/* Opponent Board */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-800">⚔️ Enemy Waters</h3>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    gameState.yourTurn 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {gameState.yourTurn ? 'Fire at will!' : 'Waiting...'}
+                  </span>
+                </div>
+                {gameState.opponentBoard ? (
+                  <GameBoard
+                    board={gameState.opponentBoard}
+                    isOwnBoard={false}
+                    onCellClick={handleCellClick}
+                    disabled={!gameState.yourTurn}
+                    selectedCell={selectedCell}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-gray-400">Loading board...</div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Panel - Actions & Chat */}
+            <div className="w-full lg:w-80 flex flex-col gap-4">
+              {/* Game Actions */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md">
+                <h3 className="text-sm font-semibold text-gray-600 uppercase mb-3">Actions</h3>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    className="w-full px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                    onClick={handleSurrender}
+                  >
+                    <span>🏳️</span>
+                    <span>Surrender</span>
+                  </button>
+                  <button 
+                    className="w-full px-4 py-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                    onClick={handleDrawOffer}
+                  >
+                    <span>🤝</span>
+                    <span>Draw Offer</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Chat */}
+              <div className="flex-1 bg-white border border-gray-200 rounded-lg shadow-md p-4">
                 <ChatBox
                   messages={chatMessages}
                   onSendMessage={handleSendChat}
-                  currentUser={user.username}
+                  currentUser={user?.username || 'Player'}
                 />
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Local Notification Modal */}
       {localNotification && (
