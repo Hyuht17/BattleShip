@@ -118,6 +118,7 @@ void handle_start_matching(Client *client);
 void handle_cancel_matching(Client *client);
 void handle_match_ready(Client *client);
 void handle_match_decline(Client *client);
+void handle_leaderboard(Client *client);
 void try_match_players();
 
 // Utility functions
@@ -758,6 +759,7 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
 }
 
 void handle_disconnect(Client *client) {
+    // Case 1: Player disconnects during active game
     if (client->status == PLAYER_IN_GAME && client->in_game_with > 0) {
         Client *opponent = get_client(client->in_game_with);
         if (opponent) {
@@ -778,6 +780,48 @@ void handle_disconnect(Client *client) {
         }
         
         // Remove game session
+        pthread_mutex_lock(&games_mutex);
+        for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+            if (game_sessions[i] && 
+                (game_sessions[i]->player1_sock == client->sock || game_sessions[i]->player2_sock == client->sock)) {
+                free(game_sessions[i]);
+                game_sessions[i] = NULL;
+                break;
+            }
+        }
+        pthread_mutex_unlock(&games_mutex);
+    }
+    // Case 2: Player disconnects during ship placement (in lobby)
+    else if (client->status == PLAYER_IN_LOBBY && client->in_game_with > 0) {
+        Client *opponent = get_client(client->in_game_with);
+        if (opponent) {
+            printf("[DISCONNECT] %s left during ship placement, %s wins\n", 
+                   client->username, opponent->username);
+            
+            // Save match history: opponent wins because client left during setup
+            save_match_history(opponent->username, client->username, "WIN");
+            save_match_history(client->username, opponent->username, "LOSE");
+            
+            // Update ELO
+            update_player_stats(opponent->username, 10, 1);  // Winner +10
+            update_player_stats(client->username, -10, 0);   // Loser -10
+            
+            int new_elo = get_player_elo(opponent->username);
+            
+            // Send notification to opponent with clear message
+            char message[BUFFER_SIZE];
+            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_LEFT_SETUP\",\"opponent\":\"%s\",\"message\":\"Đối thủ đã thoát trong lúc đặt thuyền. Bạn thắng!\",\"elo\":%d}}\n", 
+                    client->username, new_elo);
+            send_message(opponent->sock, message);
+            
+            // Reset opponent state
+            opponent->status = PLAYER_ONLINE;
+            opponent->in_game_with = 0;
+            opponent->ready = 0;
+            init_board(&opponent->board);
+        }
+        
+        // Remove game session if exists
         pthread_mutex_lock(&games_mutex);
         for (int i = 0; i < MAX_CLIENTS / 2; i++) {
             if (game_sessions[i] && 
@@ -1073,6 +1117,70 @@ void handle_match_decline(Client *client) {
     client->status = PLAYER_ONLINE;
 }
 
+void handle_leaderboard(Client *client) {
+    FILE *fp = fopen("users.dat", "r");
+    if (!fp) {
+        char response[BUFFER_SIZE];
+        sprintf(response, "{\"cmd\":\"LEADERBOARD\",\"payload\":{\"players\":[]}}\n");
+        send_message(client->sock, response);
+        return;
+    }
+    
+    // Read all players
+    PlayerAccount players[MAX_CLIENTS];
+    int player_count = 0;
+    
+    char line[256];
+    while (fgets(line, sizeof(line), fp) && player_count < MAX_CLIENTS) {
+        sscanf(line, "%[^:]:%[^:]:%d:%d:%d", 
+               players[player_count].username, 
+               players[player_count].password,
+               &players[player_count].elo,
+               &players[player_count].games_played,
+               &players[player_count].games_won);
+        player_count++;
+    }
+    fclose(fp);
+    
+    // Sort by ELO (descending)
+    for (int i = 0; i < player_count - 1; i++) {
+        for (int j = i + 1; j < player_count; j++) {
+            if (players[j].elo > players[i].elo) {
+                PlayerAccount temp = players[i];
+                players[i] = players[j];
+                players[j] = temp;
+            }
+        }
+    }
+    
+    // Build JSON response
+    char response[BUFFER_SIZE * 2];
+    char players_json[BUFFER_SIZE * 2] = "[";
+    
+    for (int i = 0; i < player_count && i < 50; i++) { // Top 50
+        char player_entry[256];
+        double winrate = players[i].games_played > 0 
+            ? (players[i].games_won * 100.0 / players[i].games_played) 
+            : 0.0;
+        
+        sprintf(player_entry, "%s{\"rank\":%d,\"username\":\"%s\",\"elo\":%d,\"games\":%d,\"wins\":%d,\"winrate\":%.1f}",
+                i > 0 ? "," : "",
+                i + 1,
+                players[i].username,
+                players[i].elo,
+                players[i].games_played,
+                players[i].games_won,
+                winrate);
+        strcat(players_json, player_entry);
+    }
+    strcat(players_json, "]");
+    
+    sprintf(response, "{\"cmd\":\"LEADERBOARD\",\"payload\":{\"players\":%s}}\n", players_json);
+    send_message(client->sock, response);
+    
+    printf("[LEADERBOARD] Sent top %d players to %s\n", player_count < 50 ? player_count : 50, client->username);
+}
+
 void handle_command(Client *client, const char *cmd, const char *payload) {
     if (strcmp(cmd, "REGISTER") == 0) {
         char username[USERNAME_SIZE], password[PASSWORD_SIZE];
@@ -1177,6 +1285,9 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
     }
     else if (strcmp(cmd, "MATCH_DECLINE") == 0) {
         handle_match_decline(client);
+    }
+    else if (strcmp(cmd, "LEADERBOARD") == 0) {
+        handle_leaderboard(client);
     }
 }
 

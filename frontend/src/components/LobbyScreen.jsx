@@ -7,6 +7,7 @@ function LobbyScreen({ socket, sendMessage, user, isMatching, onLogout }) {
   const [refreshing, setRefreshing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showPlayerList, setShowPlayerList] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   useEffect(() => {
     refreshPlayerList();
@@ -151,6 +152,14 @@ function LobbyScreen({ socket, sendMessage, user, isMatching, onLogout }) {
           socket={socket} 
           user={user} 
           onClose={() => setShowHistory(false)} 
+        />
+      )}
+
+      {showLeaderboard && (
+        <Leaderboard
+          socket={socket}
+          sendMessage={sendMessage}
+          onClose={() => setShowLeaderboard(false)}
         />
       )}
     </div>
