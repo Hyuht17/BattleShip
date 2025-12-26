@@ -278,7 +278,7 @@ function App() {
 
     const handleGameEndInline = (payload) => {
       // Show game result modal instead of alert
-      const opponentName = opponentRef.current || 'Không rõ';
+      const opponentName = opponentRef.current || payload.opponent || 'Không rõ';
       console.log('[GAME_END] Opponent name:', opponentName);
       console.log('[GAME_END] Payload:', payload);
       
@@ -295,6 +295,8 @@ function App() {
       let reason = payload.reason;
       if (payload.reason === 'OPPONENT_DISCONNECT') {
         reason = 'Đối thủ đã ngắt kết nối';
+      } else if (payload.reason === 'OPPONENT_LEFT_SETUP') {
+        reason = 'Đối thủ đã thoát trong lúc đặt thuyền';
       } else if (payload.reason === 'SURRENDER') {
         reason = 'Đối thủ đã đầu hàng';
       } else if (payload.reason === 'DRAW_ACCEPTED') {
