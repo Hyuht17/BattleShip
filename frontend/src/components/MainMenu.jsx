@@ -80,7 +80,7 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-5 py-10 bg-white min-h-screen flex flex-col items-center relative">
+    <div className="w-full px-5 py-10 bg-white min-h-screen flex flex-col items-center relative">
       <div className="text-center mb-16 mt-10">
         <div className="w-20 h-20 mx-auto mb-6 bg-gray-800 border-2 border-white rounded shadow-md flex items-center justify-center">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" className="w-14 h-14">

@@ -15,6 +15,7 @@ function App() {
   const [gameResult, setGameResult] = useState(null); // {result: 'WIN'|'LOSE', reason: string, opponent: string}
   const [drawRequest, setDrawRequest] = useState(null); // {from: username}
   const [matchFound, setMatchFound] = useState(null); // {opponent: string, elo: number}
+  const [matchReadyStatus, setMatchReadyStatus] = useState({ me: false, opponent: false }); // Track ready status
   const [isMatching, setIsMatching] = useState(false);
   const [notification, setNotification] = useState(null); // {title: string, message: string, type: 'info'|'error'|'success'|'warning'}
   const socketRef = useRef(null);
@@ -145,6 +146,7 @@ function App() {
           console.log('[GAME_START] Opponent:', payload.opponent, 'Your turn:', payload.your_turn);
           opponentRef.current = payload.opponent; // Save opponent name
           setMatchFound(null); // Close match found modal
+          setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
           setGameState({
             opponent: payload.opponent,
             yourTurn: payload.your_turn,
@@ -224,11 +226,12 @@ function App() {
             opponent: payload.opponent,
             elo: payload.elo
           });
+          setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
           break;
 
         case 'OPPONENT_READY':
           console.log('[OPPONENT_READY]', payload);
-          // Could show a notification
+          setMatchReadyStatus(prev => ({ ...prev, opponent: true }));
           break;
 
         case 'WAITING_OPPONENT':
@@ -240,6 +243,7 @@ function App() {
           console.log('[MATCH_DECLINED]', payload);
           setMatchFound(null);
           setIsMatching(false);
+          setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
           setNotification({
             title: 'Trận đấu bị từ chối',
             message: payload.message || 'Đối thủ đã từ chối trận đấu.',
@@ -429,6 +433,7 @@ function App() {
 
   const handleMatchReady = () => {
     console.log('[MATCH_READY] Sending ready confirmation');
+    setMatchReadyStatus(prev => ({ ...prev, me: true })); // Mark myself as ready
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('client-message', {
         cmd: 'MATCH_READY',
@@ -447,6 +452,7 @@ function App() {
     }
     setMatchFound(null);
     setIsMatching(false);
+    setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
   };
 
   const handleRematch = () => {
@@ -469,11 +475,15 @@ function App() {
     setScreen('lobby');
     setGameState(null);
     
-    // Request player list when returning to lobby for rematch
+    // Request player list and leaderboard when returning to lobby for rematch
     if (socketRef.current && socketRef.current.connected) {
-      console.log('[REMATCH] Requesting player list');
+      console.log('[REMATCH] Requesting player list and leaderboard');
       socketRef.current.emit('client-message', {
         cmd: 'PLAYER_LIST',
+        payload: {}
+      });
+      socketRef.current.emit('client-message', {
+        cmd: 'LEADERBOARD',
         payload: {}
       });
     }
@@ -484,11 +494,15 @@ function App() {
     setScreen('lobby');
     setGameState(null);
     
-    // Request player list when returning to lobby
+    // Request player list and leaderboard when returning to lobby
     if (socketRef.current && socketRef.current.connected) {
-      console.log('[BACK_TO_LOBBY] Requesting player list');
+      console.log('[BACK_TO_LOBBY] Requesting player list and leaderboard');
       socketRef.current.emit('client-message', {
         cmd: 'PLAYER_LIST',
+        payload: {}
+      });
+      socketRef.current.emit('client-message', {
+        cmd: 'LEADERBOARD',
         payload: {}
       });
     }
@@ -631,16 +645,62 @@ function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Ready Status */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                <div className="space-y-3">
+                  {/* My Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 font-medium">{user?.username || 'Bạn'}</span>
+                    <div className="flex items-center gap-2">
+                      {matchReadyStatus.me ? (
+                        <>
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="text-green-600 font-semibold text-sm">Sẵn sàng</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                          <span className="text-gray-500 text-sm">Chưa sẵn sàng</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Opponent Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 font-medium">{matchFound.opponent}</span>
+                    <div className="flex items-center gap-2">
+                      {matchReadyStatus.opponent ? (
+                        <>
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="text-green-600 font-semibold text-sm">Sẵn sàng</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-3 h-3 rounded-full bg-gray-400 animate-pulse"></div>
+                          <span className="text-gray-500 text-sm">Đang chờ...</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
               
               <p className="text-gray-600 mb-6">Bạn có muốn chơi với đối thủ này không?</p>
               
               {/* Buttons */}
               <div className="flex gap-4">
                 <button 
-                  className="flex-1 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+                  className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                    matchReadyStatus.me 
+                      ? 'bg-green-500 hover:bg-green-600 text-white' 
+                      : 'bg-gray-800 hover:bg-gray-700 text-white'
+                  }`}
                   onClick={handleMatchReady}
+                  disabled={matchReadyStatus.me}
                 >
-                  Sẵn sàng
+                  {matchReadyStatus.me ? '✓ Đã sẵn sàng' : 'Sẵn sàng'}
                 </button>
                 <button 
                   className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold transition-colors"

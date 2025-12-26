@@ -79,34 +79,6 @@ function GameBoard({ board, isOwnBoard, onCellClick, disabled, selectedCell, shi
           </React.Fragment>
         ))}
       </div>
-
-      {/* Legend */}
-      <div className="mt-4 flex flex-wrap gap-4 text-sm">
-        {isOwnBoard && ships && ships.length > 0 && (
-          <>
-            {ships.map((ship, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <span className="text-lg">{ship.symbol}</span>
-                <span className="text-gray-600">{ship.name || `Ship ${index + 1}`}</span>
-              </div>
-            ))}
-          </>
-        )}
-        {(!isOwnBoard || !ships || ships.length === 0) && (
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🚢</span>
-            <span className="text-gray-600">Ship</span>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💥</span>
-          <span className="text-gray-600">Hit</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💧</span>
-          <span className="text-gray-600">Miss</span>
-        </div>
-      </div>
     </div>
   );
 }
