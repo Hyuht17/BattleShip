@@ -35,6 +35,31 @@ function App() {
     }
   }, []);
 
+  // Handle tab close/refresh - send LOGOUT
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (user && socketRef.current?.connected) {
+        // Send LOGOUT synchronously
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/logout', false); // synchronous
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        
+        // Also try via socket (best effort)
+        socketRef.current.emit('client-message', {
+          cmd: 'LOGOUT',
+          payload: {}
+        });
+        
+        console.log('[LOGOUT] Sent logout on page unload');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user]);
+
   useEffect(() => {
     console.log('Connecting to:', SOCKET_SERVER_URL);
     
@@ -93,10 +118,17 @@ function App() {
       switch (cmd) {
         case 'LOGIN_SUCCESS':
           console.log('[LOGIN SUCCESS] User:', payload.username, 'ELO:', payload.elo);
-          const userData = { username: payload.username, elo: payload.elo || 800 };
+          const userData = { 
+            username: payload.username, 
+            elo: payload.elo || 800,
+            sessionToken: payload.sessionToken
+          };
           setUser(userData);
           // Save to localStorage
           localStorage.setItem('battleship_user', JSON.stringify(userData));
+          if (payload.sessionToken) {
+            localStorage.setItem('battleship_session', payload.sessionToken);
+          }
           setScreen('lobby');
           break;
 
@@ -220,6 +252,14 @@ function App() {
           setIsMatching(false);
           break;
 
+        case 'LOGOUT_SUCCESS':
+          console.log('[LOGOUT_SUCCESS]');
+          localStorage.removeItem('battleship_user');
+          localStorage.removeItem('battleship_session');
+          setUser(null);
+          setScreen('login');
+          break;
+
         default:
           console.log('Unhandled command:', cmd, payload);
       }
@@ -301,6 +341,8 @@ function App() {
         reason = 'Đối thủ đã đầu hàng';
       } else if (payload.reason === 'DRAW_ACCEPTED') {
         reason = 'Hòa - Cả hai đồng ý';
+      } else if (payload.reason === 'OPPONENT_TIMEOUT') {
+        reason = 'Đối thủ không kết nối lại (timeout 60s)';
       }
 
       setGameResult({
@@ -453,8 +495,17 @@ function App() {
   };
 
   const handleLogout = () => {
+    // Send LOGOUT to server
+    if (socketRef.current && socketRef.current.connected) {
+      sendMessage({
+        cmd: 'LOGOUT',
+        payload: {}
+      });
+    }
+    
     // Clear localStorage
     localStorage.removeItem('battleship_user');
+    localStorage.removeItem('battleship_session');
     
     // Reset state
     setUser(null);
@@ -554,7 +605,7 @@ function App() {
 
       {/* Match Found Modal */}
       {matchFound && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4 animate-fadeIn">
             <div className="text-center">
               {/* Icon */}

@@ -65,6 +65,8 @@ typedef struct {
     int sock;
     PlayerStatus status;
     char username[USERNAME_SIZE];
+    char session_token[64]; // Token để xác thực session
+    time_t last_active; // Thời gian hoạt động cuối
     struct sockaddr_in address;
     int in_game_with; // socket của đối thủ
     GameBoard board;
@@ -78,9 +80,15 @@ typedef struct {
 typedef struct {
     int player1_sock;
     int player2_sock;
+    char player1_username[USERNAME_SIZE]; // Lưu username để reconnect
+    char player2_username[USERNAME_SIZE];
     GameStatus status;
     int current_turn; // socket của người chơi đang có lượt
     time_t start_time;
+    time_t player1_disconnect_time; // Thời gian disconnect
+    time_t player2_disconnect_time;
+    int player1_disconnected; // 0 = connected, 1 = disconnected
+    int player2_disconnected;
     char log_id[50];
 } GameSession;
 
@@ -114,6 +122,10 @@ void handle_surrender(Client *client);
 void handle_draw_offer(Client *client);
 void handle_draw_reply(Client *client, const char *status);
 void handle_disconnect(Client *client);
+void handle_logout(Client *client);
+void handle_reconnect(Client *client, const char *payload);
+void generate_session_token(char *token);
+void *check_reconnection_timeout(void *arg);
 void handle_start_matching(Client *client);
 void handle_cancel_matching(Client *client);
 void handle_match_ready(Client *client);
@@ -127,6 +139,11 @@ void init_board(GameBoard *board) {
     board->ship_count = 0;
     board->total_ship_cells = 0;
     board->hits_received = 0;
+}
+
+// Generate session token
+void generate_session_token(char *token) {
+    sprintf(token, "%ld_%d", time(NULL), rand());
 }
 
 void add_client(Client *client) {
@@ -463,8 +480,14 @@ void start_game(Client *player1, Client *player2) {
     // Initialize session
     session->player1_sock = player1->sock;
     session->player2_sock = player2->sock;
+    strncpy(session->player1_username, player1->username, USERNAME_SIZE - 1);
+    strncpy(session->player2_username, player2->username, USERNAME_SIZE - 1);
     session->status = GAME_PLACING_SHIPS;
     session->start_time = time(NULL);
+    session->player1_disconnected = 0;
+    session->player2_disconnected = 0;
+    session->player1_disconnect_time = 0;
+    session->player2_disconnect_time = 0;
     sprintf(session->log_id, "game_%ld", session->start_time);
     
     // Update players
@@ -472,18 +495,24 @@ void start_game(Client *player1, Client *player2) {
     player1->in_game_with = player2->sock;
     player1->ready = 0;
     player1->is_turn = 1;
+    player1->last_active = time(NULL);
     init_board(&player1->board);
     
     player2->status = PLAYER_IN_GAME;
     player2->in_game_with = player1->sock;
     player2->ready = 0;
     player2->is_turn = 0;
+    player2->last_active = time(NULL);
     init_board(&player2->board);
     
-    // Notify both players
+    // Notify both players with session token
     char message[BUFFER_SIZE];
-    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d}}\n", 
-            player2->username, player1->is_turn);
+    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d,\"sessionToken\":\"%s\"}}\n", 
+            player2->username, player1->is_turn, player1->session_token);
+    send_message(player1->sock, message);
+    
+    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d,\"sessionToken\":\"%s\"}}\n", 
+            player1->username, player2->is_turn, player2->session_token);
     send_message(player1->sock, message);
     
     sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d}}\n", 
@@ -759,36 +788,51 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
 }
 
 void handle_disconnect(Client *client) {
-    // Case 1: Player disconnects during active game
+    printf("[DISCONNECT] %s disconnected (sock %d, status %d)\n", 
+           client->username, client->sock, client->status);
+    
+    // Case 1: Player in active game - mark as disconnected, wait for reconnect
     if (client->status == PLAYER_IN_GAME && client->in_game_with > 0) {
-        Client *opponent = get_client(client->in_game_with);
-        if (opponent) {
-            // Save match history: opponent wins because client disconnected
-            save_match_history(opponent->username, client->username, "WIN");
-            save_match_history(client->username, opponent->username, "LOSE");
-            
-            // Update ELO
-            update_player_stats(opponent->username, 10, 1);  // Winner +10
-            update_player_stats(client->username, -10, 0);   // Loser -10
-            
-            int new_elo = get_player_elo(opponent->username);
-            char message[BUFFER_SIZE];
-            sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_DISCONNECT\",\"log_id\":\"\",\"elo\":%d}}\n", new_elo);
-            send_message(opponent->sock, message);
-            opponent->status = PLAYER_ONLINE;
-            opponent->in_game_with = 0;
-        }
-        
-        // Remove game session
         pthread_mutex_lock(&games_mutex);
+        
+        // Find game session
+        GameSession *session = NULL;
+        int is_player1 = 0;
+        
         for (int i = 0; i < MAX_CLIENTS / 2; i++) {
             if (game_sessions[i] && 
-                (game_sessions[i]->player1_sock == client->sock || game_sessions[i]->player2_sock == client->sock)) {
-                free(game_sessions[i]);
-                game_sessions[i] = NULL;
+                (game_sessions[i]->player1_sock == client->sock || 
+                 game_sessions[i]->player2_sock == client->sock)) {
+                session = game_sessions[i];
+                is_player1 = (session->player1_sock == client->sock);
                 break;
             }
         }
+        
+        if (session) {
+            // Mark as disconnected and record time
+            if (is_player1) {
+                session->player1_disconnected = 1;
+                session->player1_disconnect_time = time(NULL);
+            } else {
+                session->player2_disconnected = 1;
+                session->player2_disconnect_time = time(NULL);
+            }
+            
+            printf("[DISCONNECT] %s marked as disconnected, waiting 60s for reconnect\n", 
+                   client->username);
+            
+            // Notify opponent
+            Client *opponent = get_client(client->in_game_with);
+            if (opponent) {
+                char message[BUFFER_SIZE];
+                sprintf(message, "{\"cmd\":\"OPPONENT_DISCONNECTED\",\"payload\":{\"username\":\"%s\",\"timeout\":60}}\n", 
+                        client->username);
+                send_message(opponent->sock, message);
+                printf("[DISCONNECT] Notified %s about disconnect\n", opponent->username);
+            }
+        }
+        
         pthread_mutex_unlock(&games_mutex);
     }
     // Case 2: Player disconnects during ship placement (in lobby)
@@ -1181,6 +1225,185 @@ void handle_leaderboard(Client *client) {
     printf("[LEADERBOARD] Sent top %d players to %s\n", player_count < 50 ? player_count : 50, client->username);
 }
 
+void handle_logout(Client *client) {
+    printf("[LOGOUT] %s is logging out (sock %d, status %d)\n", 
+           client->username, client->sock, client->status);
+    
+    // If in game or lobby, treat as disconnect
+    if ((client->status == PLAYER_IN_GAME || client->status == PLAYER_IN_LOBBY) && client->in_game_with > 0) {
+        handle_disconnect(client);
+    }
+    
+    // Clear session
+    memset(client->session_token, 0, sizeof(client->session_token));
+    client->status = PLAYER_OFFLINE;
+    
+    char response[BUFFER_SIZE];
+    sprintf(response, "{\"cmd\":\"LOGOUT_SUCCESS\",\"payload\":{\"message\":\"Logged out successfully\"}}\n");
+    send_message(client->sock, response);
+    
+    printf("[LOGOUT] %s logged out\n", client->username);
+}
+
+void handle_reconnect(Client *client, const char *payload) {
+    char username[USERNAME_SIZE];
+    char session_token[64];
+    
+    sscanf(payload, "{\"username\":\"%[^\"]\",\"sessionToken\":\"%[^\"]\"}", 
+           username, session_token);
+    
+    printf("[RECONNECT] %s attempting to reconnect with token %s\n", username, session_token);
+    
+    pthread_mutex_lock(&games_mutex);
+    
+    // Find game session for this user
+    for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+        if (game_sessions[i]) {
+            GameSession *session = game_sessions[i];
+            int is_player1 = strcmp(session->player1_username, username) == 0;
+            int is_player2 = strcmp(session->player2_username, username) == 0;
+            
+            if ((is_player1 && session->player1_disconnected) ||
+                (is_player2 && session->player2_disconnected)) {
+                
+                // Reconnect!
+                if (is_player1) {
+                    session->player1_sock = client->sock;
+                    session->player1_disconnected = 0;
+                    session->player1_disconnect_time = 0;
+                } else {
+                    session->player2_sock = client->sock;
+                    session->player2_disconnected = 0;
+                    session->player2_disconnect_time = 0;
+                }
+                
+                strncpy(client->username, username, USERNAME_SIZE - 1);
+                client->status = PLAYER_IN_GAME;
+                client->in_game_with = is_player1 ? session->player2_sock : session->player1_sock;
+                client->last_active = time(NULL);
+                strncpy(client->session_token, session_token, 63);
+                
+                // Get opponent
+                Client *opponent = get_client(client->in_game_with);
+                
+                // Send reconnect success
+                char message[BUFFER_SIZE];
+                sprintf(message, "{\"cmd\":\"RECONNECT_SUCCESS\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d,\"status\":\"IN_GAME\"}}\n",
+                        opponent ? opponent->username : "Unknown",
+                        client->is_turn);
+                send_message(client->sock, message);
+                
+                // Notify opponent
+                if (opponent) {
+                    sprintf(message, "{\"cmd\":\"OPPONENT_RECONNECTED\",\"payload\":{\"username\":\"%s\"}}\n", 
+                            username);
+                    send_message(opponent->sock, message);
+                    printf("[RECONNECT] Notified %s that %s reconnected\n", 
+                           opponent->username, username);
+                }
+                
+                printf("[RECONNECT] %s reconnected successfully to game\n", username);
+                pthread_mutex_unlock(&games_mutex);
+                return;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&games_mutex);
+    
+    // No active game found, just restore login session
+    int elo = get_player_elo(username);
+    char response[BUFFER_SIZE];
+    sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"elo\":%d,\"sessionToken\":\"%s\"}}\n", 
+            username, elo, session_token);
+    send_message(client->sock, response);
+    client->status = PLAYER_ONLINE;
+    strncpy(client->username, username, USERNAME_SIZE - 1);
+    strncpy(client->session_token, session_token, 63);
+    client->last_active = time(NULL);
+    
+    printf("[RECONNECT] %s reconnected to lobby\n", username);
+}
+
+void *check_reconnection_timeout(void *arg) {
+    while (1) {
+        sleep(5); // Check every 5 seconds
+        
+        pthread_mutex_lock(&games_mutex);
+        time_t now = time(NULL);
+        
+        for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+            if (game_sessions[i] == NULL) continue;
+            
+            GameSession *session = game_sessions[i];
+            
+            // Check player1 timeout
+            if (session->player1_disconnected && 
+                (now - session->player1_disconnect_time) >= 60) {
+                
+                printf("[TIMEOUT] %s did not reconnect in 60s, ending game\n", 
+                       session->player1_username);
+                
+                // Player2 wins
+                Client *winner = get_client(session->player2_sock);
+                if (winner) {
+                    save_match_history(winner->username, session->player1_username, "WIN");
+                    save_match_history(session->player1_username, winner->username, "LOSE");
+                    
+                    update_player_stats(winner->username, 10, 1);
+                    update_player_stats(session->player1_username, -10, 0);
+                    
+                    int new_elo = get_player_elo(winner->username);
+                    char message[BUFFER_SIZE];
+                    sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_TIMEOUT\",\"opponent\":\"%s\",\"elo\":%d}}\n", 
+                            session->player1_username, new_elo);
+                    send_message(winner->sock, message);
+                    
+                    winner->status = PLAYER_ONLINE;
+                    winner->in_game_with = 0;
+                }
+                
+                free(game_sessions[i]);
+                game_sessions[i] = NULL;
+                continue;
+            }
+            
+            // Check player2 timeout
+            if (session->player2_disconnected && 
+                (now - session->player2_disconnect_time) >= 60) {
+                
+                printf("[TIMEOUT] %s did not reconnect in 60s, ending game\n", 
+                       session->player2_username);
+                
+                // Player1 wins
+                Client *winner = get_client(session->player1_sock);
+                if (winner) {
+                    save_match_history(winner->username, session->player2_username, "WIN");
+                    save_match_history(session->player2_username, winner->username, "LOSE");
+                    
+                    update_player_stats(winner->username, 10, 1);
+                    update_player_stats(session->player2_username, -10, 0);
+                    
+                    int new_elo = get_player_elo(winner->username);
+                    char message[BUFFER_SIZE];
+                    sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"OPPONENT_TIMEOUT\",\"opponent\":\"%s\",\"elo\":%d}}\n", 
+                            session->player2_username, new_elo);
+                    send_message(winner->sock, message);
+                    
+                    winner->status = PLAYER_ONLINE;
+                    winner->in_game_with = 0;
+                }
+                
+                free(game_sessions[i]);
+                game_sessions[i] = NULL;
+            }
+        }
+        
+        pthread_mutex_unlock(&games_mutex);
+    }
+    return NULL;
+}
+
 void handle_command(Client *client, const char *cmd, const char *payload) {
     if (strcmp(cmd, "REGISTER") == 0) {
         char username[USERNAME_SIZE], password[PASSWORD_SIZE];
@@ -1203,13 +1426,16 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
         if (authenticate_user(username, password)) {
             strncpy(client->username, username, USERNAME_SIZE - 1);
             client->status = PLAYER_ONLINE;
+            client->last_active = time(NULL);
+            generate_session_token(client->session_token);
             
             int elo = get_player_elo(username);
             char response[BUFFER_SIZE];
-            sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"message\":\"Welcome!\",\"elo\":%d}}\n", username, elo);
+            sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"message\":\"Welcome!\",\"elo\":%d,\"sessionToken\":\"%s\"}}\n", 
+                    username, elo, client->session_token);
             send_message(client->sock, response);
             
-            printf("User logged in: %s (socket %d, ELO: %d)\n", username, client->sock, elo);
+            printf("User logged in: %s (socket %d, ELO: %d, token: %s)\n", username, client->sock, elo, client->session_token);
         } else {
             char response[BUFFER_SIZE];
             sprintf(response, "{\"cmd\":\"SYSTEM_MSG\",\"payload\":{\"code\":401,\"message\":\"Invalid credentials\"}}\n");
@@ -1288,6 +1514,12 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
     }
     else if (strcmp(cmd, "LEADERBOARD") == 0) {
         handle_leaderboard(client);
+    }
+    else if (strcmp(cmd, "LOGOUT") == 0) {
+        handle_logout(client);
+    }
+    else if (strcmp(cmd, "RECONNECT") == 0) {
+        handle_reconnect(client, payload);
     }
 }
 
@@ -1398,7 +1630,14 @@ int main() {
     printf("║   BattleShip TCP Server Started!     ║\n");
     printf("║   Port: %d                         ║\n", PORT);
     printf("║   Max Clients: %d                   ║\n", MAX_CLIENTS);
+    printf("║   Reconnect Timeout: 60s             ║\n");
     printf("╚═══════════════════════════════════════╝\n");
+    
+    // Start reconnection timeout checker thread
+    pthread_t timeout_thread;
+    pthread_create(&timeout_thread, NULL, check_reconnection_timeout, NULL);
+    pthread_detach(timeout_thread);
+    printf("[SYSTEM] Reconnection timeout checker started\n");
     
     while (1) {
         new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
@@ -1416,6 +1655,8 @@ int main() {
         client->sock = new_socket;
         client->status = PLAYER_OFFLINE;
         strcpy(client->username, "");
+        memset(client->session_token, 0, sizeof(client->session_token));
+        client->last_active = time(NULL);
         client->address = address;
         client->in_game_with = 0;
         client->ready = 0;
