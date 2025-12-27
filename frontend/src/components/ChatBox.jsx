@@ -21,10 +21,10 @@ function ChatBox({ messages, onSendMessage, currentUser }) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[400px]">
+    <div className="flex flex-col h-full">
       <h4 className="text-lg font-bold text-gray-800 mb-4 pb-3 border-b-2 border-gray-200">💬 Chat</h4>
       
-      <div className="flex-1 overflow-y-auto p-3 bg-gray-50 rounded-lg mb-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-3 bg-gray-50 rounded-lg mb-4 space-y-3 max-h-[200px]">
         {messages.length === 0 ? (
           <div className="text-center py-12 text-gray-400 italic">
             <div className="text-4xl mb-2 opacity-50">💬</div>
