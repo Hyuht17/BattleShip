@@ -11,7 +11,7 @@ const SHIPS = [
   { name: 'Destroyer', size: 2, symbol: '⛵' }
 ];
 
-function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
+function GameScreen({ socket, sendMessage, gameState, setGameState, user, myPing, opponentPing }) {
   const [selectedCell, setSelectedCell] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [localNotification, setLocalNotification] = useState(null);
@@ -206,6 +206,13 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
               <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-300">
                 <span className="text-2xl">👤</span>
                 <span className="text-lg font-bold text-gray-800 uppercase">You</span>
+                <div className={`ml-auto px-2 py-1 rounded text-xs font-semibold ${
+                  myPing < 50 ? 'bg-green-100 text-green-700' :
+                  myPing < 150 ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-red-100 text-red-700'
+                }`}>
+                  {myPing}ms
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col">
@@ -241,6 +248,13 @@ function GameScreen({ socket, sendMessage, gameState, setGameState, user }) {
               <div className="flex items-center gap-3 mb-4 pb-3 border-b border-gray-300">
                 <span className="text-2xl">🎯</span>
                 <span className="text-lg font-bold text-gray-800 uppercase truncate">{gameState.opponent || 'Opponent'}</span>
+                <div className={`ml-auto px-2 py-1 rounded text-xs font-semibold ${
+                  opponentPing < 50 ? 'bg-green-100 text-green-700' :
+                  opponentPing < 150 ? 'bg-yellow-100 text-yellow-700' :
+                  opponentPing > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {opponentPing > 0 ? `${opponentPing}ms` : 'N/A'}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col">

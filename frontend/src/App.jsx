@@ -20,8 +20,11 @@ function App() {
   const [matchReadyStatus, setMatchReadyStatus] = useState({ me: false, opponent: false }); // Track ready status
   const [isMatching, setIsMatching] = useState(false);
   const [notification, setNotification] = useState(null); // {title: string, message: string, type: 'info'|'error'|'success'|'warning'}
+  const [myPing, setMyPing] = useState(0); // Ping của bản thân (ms)
+  const [opponentPing, setOpponentPing] = useState(0); // Ping của đối thủ (ms)
   const socketRef = useRef(null);
   const opponentRef = useRef(null); // Store opponent name to avoid stale closure
+  const pingStartTimeRef = useRef(0); // Timestamp khi gửi PING
 
   // Load saved user from localStorage on mount
   useEffect(() => {
@@ -38,32 +41,7 @@ function App() {
     }
   }, []);
 
-  // Handle tab close/refresh - send LOGOUT only if NOT in game
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      // Check if currently in game
-      const inGame = localStorage.getItem('battleship_in_game');
-      
-      // Only send LOGOUT if NOT in game (in lobby)
-      // If in game, let natural disconnect trigger reconnect logic
-      if (user && socketRef.current?.connected && inGame !== 'true') {
-        // Send LOGOUT synchronously (only when in lobby)
-        socketRef.current.emit('client-message', {
-          cmd: 'LOGOUT',
-          payload: {}
-        });
-        
-        console.log('[LOGOUT] Sent logout on page unload (not in game)');
-      } else if (inGame === 'true') {
-        console.log('[DISCONNECT] In game - allowing reconnect, not sending LOGOUT');
-      }
-    };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [user]);
 
   useEffect(() => {
     console.log('Connecting to:', SOCKET_SERVER_URL);
@@ -81,35 +59,26 @@ function App() {
       console.log('Connected to Node.js server');
       setConnected(true);
       
-      // Try to reconnect with session token ONLY if in game
+      // Auto re-login if user exists in localStorage
       const savedUser = localStorage.getItem('battleship_user');
-      const savedToken = localStorage.getItem('battleship_session');
-      const inGame = localStorage.getItem('battleship_in_game'); // Check if was in game
-      
-      if (savedUser && savedToken && inGame === 'true') {
+      if (savedUser) {
         try {
           const userData = JSON.parse(savedUser);
-          console.log('[AUTO-RECONNECT] Attempting reconnect for:', userData.username);
-          
-          // Send RECONNECT command instead of LOGIN
-          socketRef.current.emit('client-message', {
-            cmd: 'RECONNECT',
-            payload: { 
-              username: userData.username,
-              sessionToken: savedToken
-            }
-          });
+          // Check if we have stored password (we'll need to add this)
+          const savedPassword = localStorage.getItem('battleship_password');
+          if (savedPassword && userData.username) {
+            console.log('[AUTO-LOGIN] Re-authenticating user:', userData.username);
+            socketRef.current.emit('client-message', {
+              cmd: 'LOGIN',
+              payload: {
+                username: userData.username,
+                password: savedPassword
+              }
+            });
+          }
         } catch (e) {
-          console.error('Failed to auto-reconnect:', e);
-          localStorage.removeItem('battleship_user');
-          localStorage.removeItem('battleship_session');
-          localStorage.removeItem('battleship_in_game');
+          console.error('[AUTO-LOGIN] Failed:', e);
         }
-      } else if (savedUser && !inGame) {
-        // Was in lobby, clear session to require re-login
-        console.log('[RECONNECT] Was in lobby, clearing session');
-        localStorage.removeItem('battleship_session');
-        localStorage.removeItem('battleship_in_game');
       }
     });
 
@@ -140,97 +109,15 @@ function App() {
           console.log('[LOGIN SUCCESS] User:', payload.username, 'ELO:', payload.elo);
           const userData = { 
             username: payload.username, 
-            elo: payload.elo || 800,
-            sessionToken: payload.sessionToken
+            elo: payload.elo || 800
           };
           setUser(userData);
           // Save to localStorage
           localStorage.setItem('battleship_user', JSON.stringify(userData));
-          if (payload.sessionToken) {
-            localStorage.setItem('battleship_session', payload.sessionToken);
-          }
           navigate('/lobby');
           break;
 
-        case 'RECONNECT_SUCCESS':
-          console.log('[RECONNECT SUCCESS]', payload);
-          const reconnectUser = JSON.parse(localStorage.getItem('battleship_user'));
-          setUser(reconnectUser);
-          
-          // Check if reconnected to an active game
-          if (payload.status === 'IN_GAME' && payload.opponent) {
-            console.log('[RECONNECT] Restoring game with opponent:', payload.opponent, 'phase:', payload.phase);
-            
-            // Set opponent ref
-            opponentRef.current = payload.opponent;
-            
-            let restoredGameState;
-            
-            if (payload.phase === 'playing') {
-              // Playing phase - restore full board state
-              console.log('[RECONNECT] Restoring playing phase with board state');
-              restoredGameState = {
-                opponent: payload.opponent,
-                yourTurn: payload.your_turn || false,
-                phase: 'playing',
-                myBoard: payload.myBoard || Array(10).fill(null).map(() => Array(10).fill(0)),
-                opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)), // Opponent board stays hidden
-                myShips: [], // Ships are in the board grid already
-                opponentShips: []
-              };
-            } else {
-              // Placing ships phase - start fresh, let them place ships again
-              console.log('[RECONNECT] Restoring placing phase - fresh ship placement');
-              restoredGameState = {
-                opponent: payload.opponent,
-                yourTurn: payload.your_turn || false,
-                phase: 'placing',
-                myBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
-                opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
-                myShips: [],
-                opponentShips: []
-              };
-            }
-            
-            setGameState(restoredGameState);
-            
-            // Go to game screen
-            navigate('/game');
-            
-            setNotification({
-              title: 'Kết nối lại thành công',
-              message: payload.phase === 'playing' 
-                ? `Đã kết nối lại trận đấu với ${payload.opponent}`
-                : `Kết nối lại thành công. Vui lòng đặt lại thuyền!`,
-              type: 'success'
-            });
-          } else {
-            // Reconnected to lobby (no active game)
-            console.log('[RECONNECT] Restored to lobby, no active game');
-            localStorage.removeItem('battleship_in_game'); // Clear flag
-            navigate('/lobby');
-            setNotification({
-              title: 'Kết nối lại thành công',
-              message: 'Đã kết nối lại. Chào mừng trở lại!',
-              type: 'success'
-            });
-          }
-          break;
 
-        case 'RECONNECT_FAILED':
-          console.log('[RECONNECT_FAILED]', payload);
-          // Clear saved session and go to login
-          localStorage.removeItem('battleship_session');
-          localStorage.removeItem('battleship_user');
-          localStorage.removeItem('battleship_in_game');
-          setUser(null);
-          navigate('/login');
-          setNotification({
-            title: 'Kết nối lại thất bại',
-            message: payload.message || 'Không thể kết nối lại phiên cũ',
-            type: 'error'
-          });
-          break;
 
         case 'REGISTER_SUCCESS':
           console.log('[REGISTER SUCCESS]');
@@ -246,9 +133,6 @@ function App() {
           opponentRef.current = payload.opponent; // Save opponent name
           setMatchFound(null); // Close match found modal
           setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
-          
-          // Mark as in game for reconnect logic
-          localStorage.setItem('battleship_in_game', 'true');
           
           setGameState({
             opponent: payload.opponent,
@@ -300,6 +184,15 @@ function App() {
               message: payload.message,
               type: 'error'
             });
+          }
+          break;
+
+        case 'PONG':
+          // Tính ping từ thời điểm gửi PING
+          if (pingStartTimeRef.current > 0) {
+            const latency = Date.now() - pingStartTimeRef.current;
+            setMyPing(latency);
+            console.log('[PING] Latency:', latency, 'ms');
           }
           break;
 
@@ -359,23 +252,7 @@ function App() {
           setIsMatching(false);
           break;
 
-        case 'OPPONENT_DISCONNECTED':
-          console.log('[OPPONENT_DISCONNECTED]', payload);
-          setNotification({
-            title: 'Đối thủ mất kết nối',
-            message: `${payload.opponent} đã mất kết nối. Đang chờ ${payload.timeout}s để kết nối lại...`,
-            type: 'warning'
-          });
-          break;
 
-        case 'OPPONENT_RECONNECTED':
-          console.log('[OPPONENT_RECONNECTED]', payload);
-          setNotification({
-            title: 'Đối thủ đã kết nối lại',
-            message: `${payload.opponent} đã quay trở lại!`,
-            type: 'success'
-          });
-          break;
 
         case 'RECONNECT_FAILED':
           console.log('[RECONNECT_FAILED]', payload);
@@ -395,8 +272,6 @@ function App() {
         case 'LOGOUT_SUCCESS':
           console.log('[LOGOUT_SUCCESS]');
           localStorage.removeItem('battleship_user');
-          localStorage.removeItem('battleship_session');
-          localStorage.removeItem('battleship_in_game');
           setUser(null);
           navigate('/login');
           break;
@@ -486,9 +361,6 @@ function App() {
         reason = 'Đối thủ không kết nối lại (timeout 60s)';
       }
 
-      // Clear in_game flag when game ends
-      localStorage.removeItem('battleship_in_game');
-      
       setGameResult({
         result: payload.result,
         reason: reason,
@@ -506,6 +378,56 @@ function App() {
       }
     };
   }, []);
+
+  // Handle browser close/refresh - send LOGOUT
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      // Send LOGOUT command when tab/window is closing
+      if (user && socketRef.current && socketRef.current.connected) {
+        console.log('[BEFOREUNLOAD] Sending LOGOUT command');
+        socketRef.current.emit('client-message', {
+          cmd: 'LOGOUT',
+          payload: {}
+        });
+        
+        // For browsers that support sendBeacon as backup
+        if (navigator.sendBeacon) {
+          const logoutData = JSON.stringify({
+            cmd: 'LOGOUT',
+            payload: {},
+            username: user.username
+          });
+          navigator.sendBeacon('/logout', logoutData);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user]);
+
+  // Auto PING to measure latency
+  useEffect(() => {
+    if (!connected || !socketRef.current) return;
+
+    // Gửi PING mỗi 3 giây
+    const pingInterval = setInterval(() => {
+      if (socketRef.current && socketRef.current.connected) {
+        pingStartTimeRef.current = Date.now();
+        socketRef.current.emit('client-message', {
+          cmd: 'PING',
+          payload: {}
+        });
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(pingInterval);
+    };
+  }, [connected]);
 
   // These functions are no longer needed as they're defined inline in useEffect
 
@@ -526,6 +448,8 @@ function App() {
 
   const handleLogin = (username, password) => {
     console.log('[LOGIN] Attempting login:', username);
+    // Save password for auto re-login (stored locally, consider security)
+    localStorage.setItem('battleship_password', password);
     sendMessage({
       cmd: 'LOGIN',
       payload: { username, password }
@@ -649,22 +573,22 @@ function App() {
   };
 
   const handleLogout = () => {
-    // Send LOGOUT to server
+    // Send LOGOUT command to server
     if (socketRef.current && socketRef.current.connected) {
-      sendMessage({
+      console.log('Sending LOGOUT command to server');
+      socketRef.current.emit('client-message', {
         cmd: 'LOGOUT',
         payload: {}
       });
     }
     
-    // Clear localStorage
+    // Clear localStorage (including saved password)
     localStorage.removeItem('battleship_user');
-    localStorage.removeItem('battleship_session');
-    localStorage.removeItem('battleship_in_game');
+    localStorage.removeItem('battleship_password');
     
     // Reset state
     setUser(null);
-    setScreen('login');
+    navigate('/login');
     setGameState(null);
     setChallengeRequest(null);
     setGameResult(null);
@@ -676,9 +600,19 @@ function App() {
   return (
     <div className="w-full min-h-screen bg-white">
       {screen !== 'lobby' && (
-      <header className="w-full max-w-7xl mx-auto px-5 py-4 bg-gradient-to-r from-purple-600 to-purple-800 rounded-lg mb-5 mt-5 flex justify-between items-center shadow-md">
-        <h1 className="text-2xl font-bold text-white">BattleShip Network Game</h1>
+      <header className="w-full max-w-7xl mx-auto px-5 py-4 bg-white border-b-2 border-gray-200 rounded-lg mb-5 mt-5 flex justify-between items-center shadow-sm">
+        <h1 className="text-2xl font-bold text-gray-800">BattleShip Network Game</h1>
         <div className="flex items-center gap-4">
+          {/* Ping Indicator */}
+          <div className={`px-3 py-2 rounded-lg flex items-center gap-2 ${
+            myPing < 50 ? 'bg-green-100 text-green-700' :
+            myPing < 150 ? 'bg-yellow-100 text-yellow-700' :
+            'bg-red-100 text-red-700'
+          }`}>
+            <div className="w-2 h-2 rounded-full animate-pulse bg-current"></div>
+            <span className="font-semibold text-sm">{myPing}ms</span>
+          </div>
+          
           <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
             connected 
               ? 'bg-green-100 text-green-800 border-2 border-green-500' 
@@ -687,10 +621,10 @@ function App() {
             {connected ? 'Connected' : 'Disconnected'}
           </div>
           {user && (
-            <div className="flex items-center gap-3 text-white">
+            <div className="flex items-center gap-3 text-gray-800">
               <span className="font-semibold">{user.username}</span>
               {user.elo !== undefined && (
-                <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-bold text-yellow-300">
+                <span className="bg-yellow-100 px-3 py-1 rounded-full text-sm font-bold text-yellow-700">
                   {user.elo} ELO
                 </span>
               )}
@@ -723,6 +657,7 @@ function App() {
                 sendMessage={sendMessage}
                 user={user}
                 isMatching={isMatching}
+                myPing={myPing}
                 onLogout={handleLogout}
               />
             ) : (
@@ -734,6 +669,8 @@ function App() {
             user && gameState ? (
               <GameScreen
                 socket={socketRef.current}
+                myPing={myPing}
+                opponentPing={opponentPing}
                 sendMessage={sendMessage}
                 gameState={gameState}
                 setGameState={setGameState}
@@ -747,10 +684,6 @@ function App() {
           <Route path="*" element={<Navigate to={user ? "/lobby" : "/login"} replace />} />
         </Routes>
       </main>
-
-      <footer className="app-footer">
-        <p>Đồ án Lập trình mạng - BattleShip Game</p>
-      </footer>
 
       {/* Draw offer modal - Highest priority */}
       {drawRequest && (

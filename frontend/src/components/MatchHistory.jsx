@@ -1,21 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 function MatchHistory({ socket, user, onClose }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const hasRequested = useRef(false);
 
   useEffect(() => {
     if (!socket || !user) return;
 
-    // Request match history
-    socket.emit('client-message', {
-      cmd: 'MATCH_HISTORY',
-      payload: {}
-    });
+    // Chỉ gửi request 1 lần duy nhất
+    if (!hasRequested.current) {
+      console.log('[MATCH_HISTORY] Sending request...');
+      hasRequested.current = true;
+      socket.emit('client-message', {
+        cmd: 'MATCH_HISTORY',
+        payload: {}
+      });
+    }
 
     // Listen for match history response
     const handleMessage = (data) => {
       if (data.cmd === 'MATCH_HISTORY') {
+        console.log('[MATCH_HISTORY] Received response:', data.payload);
         setMatches(data.payload.matches || []);
         setLoading(false);
       }

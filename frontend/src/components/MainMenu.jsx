@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShowPlayerList, onLogout, onNotification }) {
+function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShowPlayerList, onShowLeaderboard, onLogout, onNotification }) {
   const [localNotification, setLocalNotification] = useState(null);
   const [playerStats, setPlayerStats] = useState({
     wins: 0,
@@ -67,8 +67,8 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
     });
   };
 
-  const handleLeaderboard = () => {
-    onShowHistory?.();
+  const handleShowLeaderboard = () => {
+    onShowLeaderboard?.();
   };
 
   const handleSettings = () => {
@@ -80,7 +80,7 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
   };
 
   return (
-    <div className="w-full px-5 py-10 bg-white min-h-screen flex flex-col items-center relative">
+    <div className="w-full px-5 bg-white min-h-screen flex flex-col items-center relative">
       <div className="text-center mb-16 mt-10">
         <div className="w-20 h-20 mx-auto mb-6 bg-gray-800 border-2 border-white rounded shadow-md flex items-center justify-center">
           <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" className="w-14 h-14">
@@ -158,7 +158,7 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
 
         <button 
           className="w-full px-6 py-5 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 hover:translate-x-1 transition-all flex items-center justify-between"
-          onClick={handleLeaderboard}
+          onClick={handleShowLeaderboard}
         >
           <div className="flex items-center gap-4">
             <div className="w-6 h-6 flex-shrink-0">
@@ -166,7 +166,23 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
                 <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M12 2v6" />
               </svg>
             </div>
-            <span className="text-lg font-medium">Match History</span>
+            <span className="text-lg font-medium">Bảng Xếp Hạng</span>
+          </div>
+          <span className="text-xl text-gray-400">→</span>
+        </button>
+
+        <button 
+          className="w-full px-6 py-5 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 hover:translate-x-1 transition-all flex items-center justify-between"
+          onClick={onShowHistory}
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-6 h-6 flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <span className="text-lg font-medium">Lịch Sử Trận Đấu</span>
           </div>
           <span className="text-xl text-gray-400">→</span>
         </button>
