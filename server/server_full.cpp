@@ -155,12 +155,23 @@ void generate_session_token(char *token) {
 
 void add_client(Client *client) {
     pthread_mutex_lock(&clients_mutex);
+    
+    // First check if there's a disconnected client we should NOT overwrite
+    // (This prevents new connections from overwriting clients waiting to reconnect)
+    int found_slot = -1;
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i] == NULL) {
-            clients[i] = client;
-            break;
+            if (found_slot == -1) {
+                found_slot = i; // Remember first empty slot
+            }
         }
     }
+    
+    // Add to first empty slot found
+    if (found_slot != -1) {
+        clients[found_slot] = client;
+    }
+    
     pthread_mutex_unlock(&clients_mutex);
 }
 
@@ -932,10 +943,15 @@ void handle_reconnect(Client *client, const char *session_token) {
     Client *saved_client = NULL;
     pthread_mutex_lock(&clients_mutex);
     for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i] != NULL) {
+            printf("[RECONNECT] Checking slot %d: username=%s, sock=%d, token=%.10s...\n", 
+                   i, clients[i]->username, clients[i]->sock, clients[i]->session_token);
+        }
         if (clients[i] != NULL && 
             clients[i]->sock == -1 &&
             strcmp(clients[i]->session_token, session_token) == 0) {
             saved_client = clients[i];
+            printf("[RECONNECT] Found matching client: %s\n", saved_client->username);
             break;
         }
     }
@@ -946,7 +962,7 @@ void handle_reconnect(Client *client, const char *session_token) {
         char response[BUFFER_SIZE];
         sprintf(response, "{\"cmd\":\"RECONNECT_FAILED\",\"payload\":{\"message\":\"Session not found or expired\"}}\n");
         send_message(client->sock, response);
-        printf("[RECONNECT] Session not found\n");
+        printf("[RECONNECT] Session not found for token: %.10s...\n", session_token);
         return;
     }
     
@@ -1447,6 +1463,9 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
             // Generate session token
             generate_session_token(client->session_token);
             
+            // Add client to array AFTER successful login
+            add_client(client);
+            
             int elo = get_player_elo(username);
             char response[BUFFER_SIZE];
             sprintf(response, "{\"cmd\":\"LOGIN_SUCCESS\",\"payload\":{\"username\":\"%s\",\"sessionToken\":\"%s\",\"message\":\"Welcome!\",\"elo\":%d}}\n", 
@@ -1796,7 +1815,8 @@ int main() {
         client->last_active = time(NULL);
         init_board(&client->board);
         
-        add_client(client);
+        // Don't add to array yet - wait for LOGIN or RECONNECT
+        // add_client(client);
         
         pthread_t tid;
         if (pthread_create(&tid, NULL, client_thread, (void *)client) != 0) {

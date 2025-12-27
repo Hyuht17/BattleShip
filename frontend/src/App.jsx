@@ -38,22 +38,24 @@ function App() {
     }
   }, []);
 
-  // Handle tab close/refresh - send LOGOUT
+  // Handle tab close/refresh - send LOGOUT only if NOT in game
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      if (user && socketRef.current?.connected) {
-        // Send LOGOUT synchronously
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/logout', false); // synchronous
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        
-        // Also try via socket (best effort)
+      // Check if currently in game
+      const inGame = localStorage.getItem('battleship_in_game');
+      
+      // Only send LOGOUT if NOT in game (in lobby)
+      // If in game, let natural disconnect trigger reconnect logic
+      if (user && socketRef.current?.connected && inGame !== 'true') {
+        // Send LOGOUT synchronously (only when in lobby)
         socketRef.current.emit('client-message', {
           cmd: 'LOGOUT',
           payload: {}
         });
         
-        console.log('[LOGOUT] Sent logout on page unload');
+        console.log('[LOGOUT] Sent logout on page unload (not in game)');
+      } else if (inGame === 'true') {
+        console.log('[DISCONNECT] In game - allowing reconnect, not sending LOGOUT');
       }
     };
 
@@ -213,6 +215,21 @@ function App() {
               type: 'success'
             });
           }
+          break;
+
+        case 'RECONNECT_FAILED':
+          console.log('[RECONNECT_FAILED]', payload);
+          // Clear saved session and go to login
+          localStorage.removeItem('battleship_session');
+          localStorage.removeItem('battleship_user');
+          localStorage.removeItem('battleship_in_game');
+          setUser(null);
+          navigate('/login');
+          setNotification({
+            title: 'Kết nối lại thất bại',
+            message: payload.message || 'Không thể kết nối lại phiên cũ',
+            type: 'error'
+          });
           break;
 
         case 'REGISTER_SUCCESS':
@@ -614,7 +631,7 @@ function App() {
 
   const handleBackToLobby = () => {
     setGameResult(null);
-    setScreen('lobby');
+    navigate('/lobby');
     setGameState(null);
     
     // Request player list and leaderboard when returning to lobby
