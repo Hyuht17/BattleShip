@@ -1384,6 +1384,39 @@ void handle_command(Client *client, const char *cmd, const char *payload) {
         sprintf(response, "{\"cmd\":\"PONG\",\"payload\":{\"timestamp\":%ld}}\n", time(NULL));
         send_message(client->sock, response);
     }
+    else if (strcmp(cmd, "UPDATE_PING") == 0) {
+        // Client sends its calculated ping
+        int ping_value = 0;
+        sscanf(payload, "{\"ping\":%d}", &ping_value);
+        client->ping = ping_value;
+        
+        printf("[UPDATE_PING] %s ping: %d ms, status: %d, in_game_with: %d\n", 
+               client->username, ping_value, client->status, client->in_game_with);
+        
+        // If in game, broadcast ping update to opponent
+        if (client->status == PLAYER_IN_GAME && client->in_game_with > 0) {
+            pthread_mutex_lock(&clients_mutex);
+            Client *opponent = NULL;
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i] != NULL && clients[i]->sock == client->in_game_with) {
+                    opponent = clients[i];
+                    break;
+                }
+            }
+            
+            if (opponent != NULL) {
+                char ping_update[BUFFER_SIZE];
+                sprintf(ping_update, "{\"cmd\":\"PING_UPDATE\",\"payload\":{\"opponent_ping\":%d}}\n", client->ping);
+                send_message(opponent->sock, ping_update);
+                printf("[UPDATE_PING] Sent to opponent %s: ping=%d\n", opponent->username, client->ping);
+            } else {
+                printf("[UPDATE_PING] Opponent not found for %s\n", client->username);
+            }
+            pthread_mutex_unlock(&clients_mutex);
+        } else {
+            printf("[UPDATE_PING] %s not in game, skipping broadcast\n", client->username);
+        }
+    }
 }
 
 void handle_client(Client *client) {

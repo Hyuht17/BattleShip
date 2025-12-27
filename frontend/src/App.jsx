@@ -193,6 +193,23 @@ function App() {
             const latency = Date.now() - pingStartTimeRef.current;
             setMyPing(latency);
             console.log('[PING] Latency:', latency, 'ms');
+            
+            // Gửi ping của mình lên server để broadcast cho opponent
+            socketRef.current.emit('client-message', {
+              cmd: 'UPDATE_PING',
+              payload: { ping: latency }
+            });
+          }
+          break;
+
+        case 'PING_UPDATE':
+          // Nhận ping của đối thủ từ server
+          console.log('[PING_UPDATE] Received:', payload);
+          if (payload.opponent_ping !== undefined) {
+            setOpponentPing(payload.opponent_ping);
+            console.log('[PING_UPDATE] Opponent ping updated to:', payload.opponent_ping, 'ms');
+          } else {
+            console.log('[PING_UPDATE] Warning: opponent_ping is undefined');
           }
           break;
 
@@ -424,7 +441,7 @@ function App() {
           payload: {}
         });
       }
-    }, 3000);
+    }, 2000);
 
     return () => {
       clearInterval(pingInterval);
