@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './App.css';
 import LoginScreen from './components/LoginScreen';
@@ -7,7 +8,8 @@ import GameScreen from './components/GameScreen';
 import { SOCKET_SERVER_URL } from './config';
 
 function App() {
-  const [screen, setScreen] = useState('login'); // 'login', 'lobby', 'game'
+  const navigate = useNavigate();
+  const location = useLocation();
   const [connected, setConnected] = useState(false);
   const [user, setUser] = useState(null);
   const [gameState, setGameState] = useState(null);
@@ -28,7 +30,7 @@ function App() {
       try {
         const userData = JSON.parse(savedUser);
         setUser(userData);
-        setScreen('lobby');
+        navigate('/lobby');
       } catch (e) {
         console.error('Failed to parse saved user:', e);
         localStorage.removeItem('battleship_user');
@@ -77,20 +79,35 @@ function App() {
       console.log('Connected to Node.js server');
       setConnected(true);
       
-      // Auto-login if user exists in localStorage
+      // Try to reconnect with session token ONLY if in game
       const savedUser = localStorage.getItem('battleship_user');
-      if (savedUser) {
+      const savedToken = localStorage.getItem('battleship_session');
+      const inGame = localStorage.getItem('battleship_in_game'); // Check if was in game
+      
+      if (savedUser && savedToken && inGame === 'true') {
         try {
           const userData = JSON.parse(savedUser);
-          console.log('Auto-login with saved user:', userData.username);
-          // Send LOGIN directly via socket
+          console.log('[AUTO-RECONNECT] Attempting reconnect for:', userData.username);
+          
+          // Send RECONNECT command instead of LOGIN
           socketRef.current.emit('client-message', {
-            cmd: 'LOGIN',
-            payload: { username: userData.username }
+            cmd: 'RECONNECT',
+            payload: { 
+              username: userData.username,
+              sessionToken: savedToken
+            }
           });
         } catch (e) {
-          console.error('Failed to auto-login:', e);
+          console.error('Failed to auto-reconnect:', e);
+          localStorage.removeItem('battleship_user');
+          localStorage.removeItem('battleship_session');
+          localStorage.removeItem('battleship_in_game');
         }
+      } else if (savedUser && !inGame) {
+        // Was in lobby, clear session to require re-login
+        console.log('[RECONNECT] Was in lobby, clearing session');
+        localStorage.removeItem('battleship_session');
+        localStorage.removeItem('battleship_in_game');
       }
     });
 
@@ -130,7 +147,72 @@ function App() {
           if (payload.sessionToken) {
             localStorage.setItem('battleship_session', payload.sessionToken);
           }
-          setScreen('lobby');
+          navigate('/lobby');
+          break;
+
+        case 'RECONNECT_SUCCESS':
+          console.log('[RECONNECT SUCCESS]', payload);
+          const reconnectUser = JSON.parse(localStorage.getItem('battleship_user'));
+          setUser(reconnectUser);
+          
+          // Check if reconnected to an active game
+          if (payload.status === 'IN_GAME' && payload.opponent) {
+            console.log('[RECONNECT] Restoring game with opponent:', payload.opponent, 'phase:', payload.phase);
+            
+            // Set opponent ref
+            opponentRef.current = payload.opponent;
+            
+            let restoredGameState;
+            
+            if (payload.phase === 'playing') {
+              // Playing phase - restore full board state
+              console.log('[RECONNECT] Restoring playing phase with board state');
+              restoredGameState = {
+                opponent: payload.opponent,
+                yourTurn: payload.your_turn || false,
+                phase: 'playing',
+                myBoard: payload.myBoard || Array(10).fill(null).map(() => Array(10).fill(0)),
+                opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)), // Opponent board stays hidden
+                myShips: [], // Ships are in the board grid already
+                opponentShips: []
+              };
+            } else {
+              // Placing ships phase - start fresh, let them place ships again
+              console.log('[RECONNECT] Restoring placing phase - fresh ship placement');
+              restoredGameState = {
+                opponent: payload.opponent,
+                yourTurn: payload.your_turn || false,
+                phase: 'placing',
+                myBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
+                opponentBoard: Array(10).fill(null).map(() => Array(10).fill(0)),
+                myShips: [],
+                opponentShips: []
+              };
+            }
+            
+            setGameState(restoredGameState);
+            
+            // Go to game screen
+            navigate('/game');
+            
+            setNotification({
+              title: 'Kết nối lại thành công',
+              message: payload.phase === 'playing' 
+                ? `Đã kết nối lại trận đấu với ${payload.opponent}`
+                : `Kết nối lại thành công. Vui lòng đặt lại thuyền!`,
+              type: 'success'
+            });
+          } else {
+            // Reconnected to lobby (no active game)
+            console.log('[RECONNECT] Restored to lobby, no active game');
+            localStorage.removeItem('battleship_in_game'); // Clear flag
+            navigate('/lobby');
+            setNotification({
+              title: 'Kết nối lại thành công',
+              message: 'Đã kết nối lại. Chào mừng trở lại!',
+              type: 'success'
+            });
+          }
           break;
 
         case 'REGISTER_SUCCESS':
@@ -147,6 +229,10 @@ function App() {
           opponentRef.current = payload.opponent; // Save opponent name
           setMatchFound(null); // Close match found modal
           setMatchReadyStatus({ me: false, opponent: false }); // Reset ready status
+          
+          // Mark as in game for reconnect logic
+          localStorage.setItem('battleship_in_game', 'true');
+          
           setGameState({
             opponent: payload.opponent,
             yourTurn: payload.your_turn,
@@ -256,12 +342,46 @@ function App() {
           setIsMatching(false);
           break;
 
+        case 'OPPONENT_DISCONNECTED':
+          console.log('[OPPONENT_DISCONNECTED]', payload);
+          setNotification({
+            title: 'Đối thủ mất kết nối',
+            message: `${payload.opponent} đã mất kết nối. Đang chờ ${payload.timeout}s để kết nối lại...`,
+            type: 'warning'
+          });
+          break;
+
+        case 'OPPONENT_RECONNECTED':
+          console.log('[OPPONENT_RECONNECTED]', payload);
+          setNotification({
+            title: 'Đối thủ đã kết nối lại',
+            message: `${payload.opponent} đã quay trở lại!`,
+            type: 'success'
+          });
+          break;
+
+        case 'RECONNECT_FAILED':
+          console.log('[RECONNECT_FAILED]', payload);
+          // Clear saved session and go to login
+          localStorage.removeItem('battleship_session');
+          localStorage.removeItem('battleship_user');
+          localStorage.removeItem('battleship_in_game');
+          setUser(null);
+          navigate('/login');
+          setNotification({
+            title: 'Kết nối lại thất bại',
+            message: payload.message || 'Không thể kết nối lại phiên cũ',
+            type: 'error'
+          });
+          break;
+
         case 'LOGOUT_SUCCESS':
           console.log('[LOGOUT_SUCCESS]');
           localStorage.removeItem('battleship_user');
           localStorage.removeItem('battleship_session');
+          localStorage.removeItem('battleship_in_game');
           setUser(null);
-          setScreen('login');
+          navigate('/login');
           break;
 
         default:
@@ -349,6 +469,9 @@ function App() {
         reason = 'Đối thủ không kết nối lại (timeout 60s)';
       }
 
+      // Clear in_game flag when game ends
+      localStorage.removeItem('battleship_in_game');
+      
       setGameResult({
         result: payload.result,
         reason: reason,
@@ -520,6 +643,7 @@ function App() {
     // Clear localStorage
     localStorage.removeItem('battleship_user');
     localStorage.removeItem('battleship_session');
+    localStorage.removeItem('battleship_in_game');
     
     // Reset state
     setUser(null);
@@ -566,33 +690,45 @@ function App() {
       )}
 
       <main className="w-full">
-        {screen === 'login' && (
-          <LoginScreen
-            onLogin={handleLogin}
-            onRegister={handleRegister}
-            connected={connected}
-          />
-        )}
+        <Routes>
+          <Route path="/login" element={
+            <LoginScreen
+              onLogin={handleLogin}
+              onRegister={handleRegister}
+              connected={connected}
+            />
+          } />
 
-        {screen === 'lobby' && (
-          <LobbyScreen
-            socket={socketRef.current}
-            sendMessage={sendMessage}
-            user={user}
-            isMatching={isMatching}
-            onLogout={handleLogout}
-          />
-        )}
+          <Route path="/lobby" element={
+            user ? (
+              <LobbyScreen
+                socket={socketRef.current}
+                sendMessage={sendMessage}
+                user={user}
+                isMatching={isMatching}
+                onLogout={handleLogout}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          } />
 
-        {screen === 'game' && gameState && (
-          <GameScreen
-            socket={socketRef.current}
-            sendMessage={sendMessage}
-            gameState={gameState}
-            setGameState={setGameState}
-            user={user}
-          />
-        )}
+          <Route path="/game" element={
+            user && gameState ? (
+              <GameScreen
+                socket={socketRef.current}
+                sendMessage={sendMessage}
+                gameState={gameState}
+                setGameState={setGameState}
+                user={user}
+              />
+            ) : (
+              <Navigate to={user ? "/lobby" : "/login"} replace />
+            )
+          } />
+
+          <Route path="*" element={<Navigate to={user ? "/lobby" : "/login"} replace />} />
+        </Routes>
       </main>
 
       <footer className="app-footer">
@@ -782,7 +918,7 @@ function App() {
 
       {/* Notification Modal */}
       {notification && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 animate-fadeIn">
             <div className="text-center">
               <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
