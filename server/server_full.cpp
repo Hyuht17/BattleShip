@@ -123,6 +123,7 @@ void end_game(GameSession *session, int winner_sock, const char *reason);
 void handle_surrender(Client *client);
 void handle_draw_offer(Client *client);
 void handle_draw_reply(Client *client, const char *status);
+void cleanup_game_on_exit(Client *client, int notify_opponent);
 void handle_disconnect(Client *client);
 void handle_logout(Client *client);
 void generate_session_token(char *token);
@@ -505,14 +506,10 @@ void start_game(Client *player1, Client *player2) {
     player2->last_active = time(NULL);
     init_board(&player2->board);
     
-    // Notify both players with session token
+    // Notify both players
     char message[BUFFER_SIZE];
-    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d,\"sessionToken\":\"%s\"}}\n", 
-            player2->username, player1->is_turn, player1->session_token);
-    send_message(player1->sock, message);
-    
-    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d,\"sessionToken\":\"%s\"}}\n", 
-            player1->username, player2->is_turn, player2->session_token);
+    sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d}}\n", 
+            player2->username, player1->is_turn);
     send_message(player1->sock, message);
     
     sprintf(message, "{\"cmd\":\"GAME_START\",\"payload\":{\"opponent\":\"%s\",\"your_turn\":%d}}\n", 
@@ -672,19 +669,24 @@ void handle_move(Client *client, const char *coord) {
         opponent->board.grid[row][col] = 2; // mark as hit
         opponent->board.hits_received++;
         
-        // Check if ship is sunk
+        // Find which ship was hit and increment its hit counter
         for (int i = 0; i < opponent->board.ship_count; i++) {
             Ship *ship = &opponent->board.ships[i];
-            int ship_hits = 0;
+            // Check if this coordinate belongs to this ship
             for (int j = 0; j < ship->size; j++) {
                 int r = ship->start_row + (ship->is_horizontal ? 0 : j);
                 int c = ship->start_col + (ship->is_horizontal ? j : 0);
-                if (opponent->board.grid[r][c] == 2) ship_hits++;
+                if (r == row && c == col) {
+                    // This is the ship that was hit
+                    ship->hits++;
+                    // Only report sunk if this hit completes the ship (prevents duplicate sunk messages)
+                    if (ship->hits == ship->size) {
+                        strcpy(ship_sunk, ship->name);
+                    }
+                    break;
+                }
             }
-            if (ship_hits == ship->size) {
-                strcpy(ship_sunk, ship->name);
-                break;
-            }
+            if (ship_sunk[0] != '\0') break; // Found the ship, no need to check others
         }
     } else if (cell == 0) {
         strcpy(result, "MISS");
@@ -693,35 +695,48 @@ void handle_move(Client *client, const char *coord) {
         strcpy(result, "ALREADY_HIT");
     }
     
-    // Send result to the player who made the move (their shot result)
+    // Check game end FIRST - opponent must have ships and all ships sunk
+    if (opponent->board.total_ship_cells > 0 && 
+        opponent->board.hits_received >= opponent->board.total_ship_cells) {
+        // Game is over - include final ship sunk info in GAME_END message
+        pthread_mutex_lock(&games_mutex);
+        GameSession *session = NULL;
+        for (int i = 0; i < MAX_CLIENTS / 2; i++) {
+            if (game_sessions[i] && 
+                ((game_sessions[i]->player1_sock == client->sock && game_sessions[i]->player2_sock == opponent->sock) ||
+                 (game_sessions[i]->player2_sock == client->sock && game_sessions[i]->player1_sock == opponent->sock))) {
+                session = game_sessions[i];
+                break;
+            }
+        }
+        pthread_mutex_unlock(&games_mutex);
+        
+        if (session) {
+            // Send final MOVE_RESULT with game_over flag to suppress popup
+            char message[BUFFER_SIZE];
+            sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":true,\"game_over\":true}}\n", 
+                    coord, result, ship_sunk);
+            send_message(client->sock, message);
+            
+            sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":false,\"game_over\":true}}\n", 
+                    coord, result, ship_sunk);
+            send_message(opponent->sock, message);
+            
+            // Now end the game - end_game() will handle free() and cleanup
+            end_game(session, client->sock, "ALL_SHIPS_SUNK");
+        }
+        return;
+    }
+    
+    // Game continues - send normal MOVE_RESULT
     char message[BUFFER_SIZE];
     sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":true}}\n", 
             coord, result, ship_sunk);
     send_message(client->sock, message);
     
-    // Send result to opponent (they need to know where they were shot at)
     sprintf(message, "{\"cmd\":\"MOVE_RESULT\",\"payload\":{\"coord\":\"%s\",\"result\":\"%s\",\"ship_sunk\":\"%s\",\"is_your_shot\":false}}\n", 
             coord, result, ship_sunk);
     send_message(opponent->sock, message);
-    
-    // Check game end - opponent must have ships and all ships sunk
-    if (opponent->board.total_ship_cells > 0 && 
-        opponent->board.hits_received >= opponent->board.total_ship_cells) {
-        // Client wins
-        pthread_mutex_lock(&games_mutex);
-        for (int i = 0; i < MAX_CLIENTS / 2; i++) {
-            if (game_sessions[i] && 
-                ((game_sessions[i]->player1_sock == client->sock && game_sessions[i]->player2_sock == opponent->sock) ||
-                 (game_sessions[i]->player2_sock == client->sock && game_sessions[i]->player1_sock == opponent->sock))) {
-                end_game(game_sessions[i], client->sock, "ALL_SHIPS_SUNK");
-                free(game_sessions[i]);
-                game_sessions[i] = NULL;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&games_mutex);
-        return;
-    }
     
     // Switch turns
     client->is_turn = 0;
@@ -756,8 +771,16 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
                 reason, session->log_id, new_elo);
         send_message(winner->sock, message);
+        
+        // Reset winner state completely
         winner->status = PLAYER_ONLINE;
         winner->in_game_with = 0;
+        winner->ready = 0;
+        winner->is_turn = 0;
+        winner->is_matching = 0;
+        winner->match_ready = 0;
+        init_board(&winner->board);
+        
         printf("[END_GAME] %s wins, status set to ONLINE, ELO: %d\n", winner->username, new_elo);
     }
     
@@ -767,8 +790,16 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"LOSE\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
                 reason, session->log_id, new_elo);
         send_message(loser->sock, message);
+        
+        // Reset loser state completely
         loser->status = PLAYER_ONLINE;
         loser->in_game_with = 0;
+        loser->ready = 0;
+        loser->is_turn = 0;
+        loser->is_matching = 0;
+        loser->match_ready = 0;
+        init_board(&loser->board);
+        
         printf("[END_GAME] %s loses, status set to ONLINE, ELO: %d\n", loser->username, new_elo);
     }
     
@@ -787,19 +818,16 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
     printf("Game ended: %s\n", reason);
 }
 
-void handle_disconnect(Client *client) {
-    printf("[DISCONNECT] %s disconnected (sock %d, status %d)\n", 
-           client->username, client->sock, client->status);
-    
-    // If player is in game (any phase), they lose immediately
+// Helper function to handle game cleanup (used by both disconnect and logout)
+void cleanup_game_on_exit(Client *client, int notify_opponent) {
     if ((client->status == PLAYER_IN_GAME || client->status == PLAYER_IN_LOBBY) && client->in_game_with > 0) {
         Client *opponent = get_client(client->in_game_with);
         
-        if (opponent) {
+        if (opponent && notify_opponent) {
             // Determine phase for better messaging
             const char *phase = (client->status == PLAYER_IN_LOBBY) ? "đặt thuyền" : "chơi game";
             
-            printf("[DISCONNECT] %s disconnected during %s - %s wins\n", 
+            printf("[GAME_CLEANUP] %s left during %s - %s wins\n", 
                    client->username, phase, opponent->username);
             
             // Save match history
@@ -822,6 +850,7 @@ void handle_disconnect(Client *client) {
             opponent->status = PLAYER_ONLINE;
             opponent->in_game_with = 0;
             opponent->ready = 0;
+            opponent->is_turn = 0;
             opponent->is_matching = 0;
             opponent->match_ready = 0;
             init_board(&opponent->board);
@@ -835,16 +864,23 @@ void handle_disconnect(Client *client) {
                  game_sessions[i]->player2_sock == client->sock)) {
                 free(game_sessions[i]);
                 game_sessions[i] = NULL;
-                printf("[DISCONNECT] Game session removed\n");
+                printf("[GAME_CLEANUP] Game session removed\n");
                 break;
             }
         }
         pthread_mutex_unlock(&games_mutex);
     }
+}
+
+void handle_disconnect(Client *client) {
+    printf("[DISCONNECT] %s disconnected (sock %d, status %d)\n", 
+           client->username, client->sock, client->status);
     
-    // Mark client as offline
+    // Cleanup game with opponent notification
+    cleanup_game_on_exit(client, 1);
+    
+    // Mark client as offline (DON'T invalidate socket here - thread will close it)
     client->status = PLAYER_OFFLINE;
-    client->sock = -1;
 }
 
 void handle_surrender(Client *client) {
@@ -1205,15 +1241,21 @@ void handle_logout(Client *client) {
     printf("[LOGOUT] Status: %d\n", client->status);
     printf("[LOGOUT] Time: %s", ctime(&now));
     
-    // If in game or lobby, treat as disconnect
+    // If in game or lobby, cleanup game (notify opponent)
     if ((client->status == PLAYER_IN_GAME || client->status == PLAYER_IN_LOBBY) && client->in_game_with > 0) {
-        printf("[LOGOUT] %s is in game - triggering disconnect logic\n", client->username);
-        handle_disconnect(client);
+        printf("[LOGOUT] %s is in game - cleaning up game\n", client->username);
+        cleanup_game_on_exit(client, 1);
     }
     
-    // Clear session
+    // Clear session and reset state
     memset(client->session_token, 0, sizeof(client->session_token));
     client->status = PLAYER_OFFLINE;
+    client->in_game_with = 0;
+    client->ready = 0;
+    client->is_turn = 0;
+    client->is_matching = 0;
+    client->match_ready = 0;
+    init_board(&client->board);
     
     char response[BUFFER_SIZE];
     sprintf(response, "{\"cmd\":\"LOGOUT_SUCCESS\",\"payload\":{\"message\":\"Logged out successfully\"}}\n");

@@ -282,7 +282,7 @@ function App() {
     };
 
     const handleMoveResultInline = (payload) => {
-      const { coord, result, ship_sunk, is_your_shot } = payload;
+      const { coord, result, ship_sunk, is_your_shot, game_over } = payload;
       const col = parseInt(coord.substring(1));
       const row = coord.charCodeAt(0) - 65;
 
@@ -323,7 +323,9 @@ function App() {
         return newState;
       });
 
-      if (ship_sunk) {
+      // Only show ship sunk notification if game is NOT over
+      // (game_over means GAME_END is coming next, so don't show popup)
+      if (ship_sunk && !game_over) {
         setNotification({
           title: 'Tàu bị đánh chìm!',
           message: `${ship_sunk} đã bị đánh chìm!`,
@@ -613,13 +615,6 @@ function App() {
             <span className="font-semibold text-sm">{myPing}ms</span>
           </div>
           
-          <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
-            connected 
-              ? 'bg-green-100 text-green-800 border-2 border-green-500' 
-              : 'bg-red-100 text-red-800 border-2 border-red-500'
-          }`}>
-            {connected ? 'Connected' : 'Disconnected'}
-          </div>
           {user && (
             <div className="flex items-center gap-3 text-gray-800">
               <span className="font-semibold">{user.username}</span>

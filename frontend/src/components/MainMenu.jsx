@@ -204,21 +204,6 @@ function MainMenu({ socket, sendMessage, user, isMatching, onShowHistory, onShow
         </button>
       </div>
 
-      <div className="flex gap-10 mt-auto mb-5">
-        <div className="text-center">
-          <div className="text-3xl font-bold text-gray-800 mb-1">{playerStats.wins}</div>
-          <div className="text-sm text-gray-500 uppercase tracking-wide">Wins</div>
-        </div>
-        <div className="text-center">
-          <div className="text-3xl font-bold text-gray-800 mb-1">{playerStats.losses}</div>
-          <div className="text-sm text-gray-500 uppercase tracking-wide">Losses</div>
-        </div>
-        <div className="text-center">
-          <div className="text-3xl font-bold text-gray-800 mb-1">{playerStats.winRate}%</div>
-          <div className="text-sm text-gray-500 uppercase tracking-wide">Win Rate</div>
-        </div>
-      </div>
-
       <button 
         className="absolute bottom-5 right-5 w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-gray-700 transition-colors shadow-md"
         title="Help"
