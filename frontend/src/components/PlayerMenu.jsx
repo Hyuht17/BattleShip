@@ -21,7 +21,7 @@ function PlayerMenu({ user, onLogout, onShowHistory, onShowSettings }) {
             className="fixed inset-0 bg-black/50 z-[999] animate-fadeIn"
             onClick={() => setIsOpen(false)}
           ></div>
-          <div className="fixed top-0 right-0 w-80 h-screen bg-gradient-to-b from-gray-800 to-gray-900 shadow-2xl z-[1000] flex flex-col animate-slideInRight overflow-y-auto">
+          <div className="fixed top-0 right-0 w-80 h-screen bg-gradient-to-b from-gray-800 to-gray-900 shadow-2xl z-[1000] flex flex-col animate-slideInRight">
             {/* Header */}
             <div className="p-8 bg-white/10 border-b-2 border-white/20 flex items-center gap-4">
               <div className="flex-shrink-0">

@@ -101,14 +101,14 @@ function Leaderboard({ socket, sendMessage, onClose }) {
             <p className="text-gray-600">Đang tải dữ liệu...</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto">
             {players.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                 <p className="text-lg">Chưa có dữ liệu xếp hạng</p>
                 <p className="text-sm mt-2">Số lượng người chơi: {players.length}</p>
               </div>
             ) : (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-md">
+              <div className="bg-white">
                 {/* Table Header */}
                 <div className="grid grid-cols-[60px_1fr_90px_70px_70px_85px] md:grid-cols-[80px_1fr_120px_80px_80px_100px] gap-2 md:gap-4 px-3 md:px-6 py-3 md:py-4 bg-gray-100 border-b border-gray-200 sticky top-0 z-10">
                   <div className="font-bold text-gray-700 text-xs md:text-sm uppercase tracking-wide">Hạng</div>
@@ -120,7 +120,7 @@ function Leaderboard({ socket, sendMessage, onClose }) {
                 </div>
 
                 {/* Table Body */}
-                <div className="max-h-[450px] overflow-y-auto">
+                <div>
                   {players.map((player) => (
                     <div 
                       key={player.rank} 
