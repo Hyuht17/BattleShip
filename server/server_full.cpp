@@ -1122,6 +1122,11 @@ void handle_match_decline(Client *client) {
         opponent->status = PLAYER_ONLINE;
     }
     
+    // Send confirmation to the person who declined
+    char response[BUFFER_SIZE];
+    sprintf(response, "{\"cmd\":\"MATCH_DECLINED\",\"payload\":{\"message\":\"Bạn đã từ chối trận đấu\"}}\n");
+    send_message(client->sock, response);
+    
     // Reset this player's state
     client->in_game_with = 0;
     client->match_ready = 0;
