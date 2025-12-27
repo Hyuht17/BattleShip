@@ -756,9 +756,13 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         char message[BUFFER_SIZE];
         sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"WIN\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
                 reason, session->log_id, new_elo);
-        send_message(winner->sock, message);
+        if (winner->sock != -1) {
+            send_message(winner->sock, message);
+        }
         winner->status = PLAYER_ONLINE;
         winner->in_game_with = 0;
+        winner->is_matching = 0;
+        winner->ready = 0;
         printf("[END_GAME] %s wins, status set to ONLINE, ELO: %d\n", winner->username, new_elo);
     }
     
@@ -767,9 +771,13 @@ void end_game(GameSession *session, int winner_sock, const char *reason) {
         char message[BUFFER_SIZE];
         sprintf(message, "{\"cmd\":\"GAME_END\",\"payload\":{\"result\":\"LOSE\",\"reason\":\"%s\",\"log_id\":\"%s\",\"elo\":%d}}\n", 
                 reason, session->log_id, new_elo);
-        send_message(loser->sock, message);
+        if (loser->sock != -1) {
+            send_message(loser->sock, message);
+        }
         loser->status = PLAYER_ONLINE;
         loser->in_game_with = 0;
+        loser->is_matching = 0;
+        loser->ready = 0;
         printf("[END_GAME] %s loses, status set to ONLINE, ELO: %d\n", loser->username, new_elo);
     }
     

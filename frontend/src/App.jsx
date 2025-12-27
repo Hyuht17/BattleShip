@@ -243,7 +243,7 @@ function App() {
             opponentShips: []
           });
           console.log('[GAME_START] Switching to game screen');
-          setScreen('game');
+          navigate('/game');
           break;
 
         case 'GAME_READY':
