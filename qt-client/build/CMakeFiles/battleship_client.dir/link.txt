@@ -1,0 +1,2 @@
+/usr/bin/ar qc libbattleship_client.a CMakeFiles/battleship_client.dir/battleship_client_autogen/mocs_compilation.cpp.o "CMakeFiles/battleship_client.dir/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/client-lib/battleship_client.c.o"
+/usr/bin/ranlib libbattleship_client.a

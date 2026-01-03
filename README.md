@@ -1,53 +1,48 @@
 # 🚢 BattleShip Network Game
 
-> Trò chơi Hải chiến mạng đa người chơi với kiến trúc Client-Server hoàn chỉnh
+> Trò chơi Hải chiến mạng đa người chơi với Qt Desktop Client
 
-[![Node.js](https://img.shields.io/badge/Node.js-v14+-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-19-blue.svg)](https://reactjs.org/)
+[![Qt](https://img.shields.io/badge/Qt-6-green.svg)](https://www.qt.io/)
+[![C](https://img.shields.io/badge/C-11-blue.svg)](https://en.cppreference.com/w/c)
 [![C++](https://img.shields.io/badge/C++-11+-red.svg)](https://isocpp.org/)
-[![Status](https://img.shields.io/badge/Status-Complete-success.svg)]()
+[![Status](https://img.shields.io/badge/Status-Active-success.svg)]()
 
 ## 📖 Giới thiệu
 
-**BattleShip Network Game** là đồ án môn Lập trình mạng, implement trò chơi Hải chiến (Battleship) truyền thống với các tính năng:
+**BattleShip Network Game** là đồ án môn Lập trình mạng, implement trò chơi Hải chiến (Battleship) với Qt desktop GUI:
 
 - 🎮 Chơi mạng real-time với nhiều người
 - 🔐 Hệ thống đăng ký/đăng nhập
-- ⚔️ Thách đấu và ghép cặp người chơi
+- ⚔️ Matchmaking tự động theo ELO
 - 🚢 Đặt tàu với validation đầy đủ
-- 💬 Chat trong game
-- 🏆 Xác định thắng/thua tự động
-- 📱 Giao diện responsive, hiện đại
+- 💥 Đánh tàu trên lưới 10x10
+- 🏆 Hệ thống ELO ranking
+- 📊 Leaderboard và match history
+- 🖥️ Desktop native app với Qt
 
-## 🏗️ Kiến trúc
+## 🏗️ Kiến trúc - Đơn giản hơn (Bỏ Node.js & React)
 
 ```
-┌─────────────┐    ┌─────────────┐           ┌──────────────┐           ┌─────────────┐
-│  Client 1   │    │  Client 2   │           │   Client N   │           │             │
-│  (Browser)  │    │  (Browser)  │    ...    │  (Browser)   │           │             │
-└──────┬──────┘    └──────┬──────┘           └──────┬───────┘           │             │
-       │                  │                         │                    │             │
-       └──────────────────┴─────────────────────────┘                    │   Storage   │
-                          │ WebSocket                                    │  (File DB)  │
-                          │                                              │             │
-              ┌───────────▼────────────┐                                 │             │
-              │   Node.js Middleware   │                                 │             │
-              │      (Port 3000)       │                                 │             │
-              │  • CORS handling       │                                 │             │
-              │  • WebSocket ↔ TCP     │                                 │             │
-              │  • No game logic       │                                 │             │
-              └───────────┬────────────┘                                 │             │
-                          │ TCP Socket                                   │             │
-                          │                                              │             │
-              ┌───────────▼────────────┐                                 │             │
-              │   C++ Game Server      │◄────────────────────────────────┤             │
-              │      (Port 8080)       │                                 │             │
-              │  • Authentication      │                                 │             │
-              │  • Game matching       │                                 │             │
-              │  • Move validation     │                                 └─────────────┘
-              │  • Win condition       │
-              │  • All game logic      │
-              └────────────────────────┘
+┌─────────────┐    ┌─────────────┐           ┌──────────────┐           
+│  Qt Client  │    │  Qt Client  │    ...    │  Qt Client   │           
+│  (Desktop)  │    │  (Desktop)  │           │  (Desktop)   │           
+└──────┬──────┘    └──────┬──────┘           └──────┬───────┘           
+       │                  │                         │                    
+       │ TCP Socket       │ TCP Socket              │ TCP Socket         
+       │                  │                         │                    
+       └──────────────────┴─────────────────────────┘                    
+                          │                                              
+              ┌───────────▼────────────┐                 ┌─────────────┐
+              │   C++ Game Server      │◄────────────────┤  Storage    │
+              │      (Port 8080)       │                 │  (File DB)  │
+              │  • Authentication      │                 │             │
+              │  • Game matching       │                 └─────────────┘
+              │  • Move validation     │                                
+              │  • Win condition       │                                
+              │  • All game logic      │                                
+              └────────────────────────┘                                
+
+Luồng:  Qt GUI → C Library (TCP) → C++ Server
 ```
 
 ### Vai trò từng thành phần:

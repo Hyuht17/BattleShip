@@ -1,0 +1,12 @@
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_client.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_qt.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/edit_cache.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/rebuild_cache.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/list_install_components.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/install.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/install/local.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/install/strip.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_client_autogen_timestamp_deps.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_client_autogen.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_qt_autogen_timestamp_deps.dir
+/mnt/data_rescue/Learn/Cac_mon_thuc_hanh/LTM/Project/qt-client/build/CMakeFiles/battleship_qt_autogen.dir
