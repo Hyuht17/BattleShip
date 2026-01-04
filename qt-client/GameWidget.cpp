@@ -6,6 +6,8 @@
 #include <QJsonObject>
 #include <QDebug>
 #include <QTime>
+#include <cstdlib>
+#include <ctime>
 
 GameWidget::GameWidget(QWidget *parent)
     : QWidget(parent)
@@ -240,6 +242,14 @@ void GameWidget::setupShipPlacementUI() {
     
     panelLayout->addSpacing(20);
     
+    // Nút Random
+    randomButton = new QPushButton("Random Place", this);
+    randomButton->setStyleSheet("background-color: #FF9800; color: white; font-weight: bold; padding: 8px;");
+    connect(randomButton, &QPushButton::clicked, this, &GameWidget::onRandomPlaceClicked);
+    panelLayout->addWidget(randomButton);
+    
+    panelLayout->addSpacing(10);
+    
     // Nút Ready
     readyButton = new QPushButton("Ready!", this);
     readyButton->setEnabled(false);
@@ -366,7 +376,7 @@ void GameWidget::setYourTurn(bool isTurn) {
     }
 }
 
-void GameWidget::updateMove(int row, int col, bool hit, bool sunk, bool isMyMove) {
+void GameWidget::updateMove(int row, int col, bool hit, bool sunk, bool isMyMove, const QString& shipName) {
     QPushButton* cell = isMyMove ? opponentCells[row][col] : myCells[row][col];
     
     if (hit) {
@@ -379,8 +389,19 @@ void GameWidget::updateMove(int row, int col, bool hit, bool sunk, bool isMyMove
     
     cell->setEnabled(false);
     
-    if (sunk) {
-        statusLabel->setText(isMyMove ? "You sunk a ship!" : "Opponent sunk your ship!");
+    if (sunk && !shipName.isEmpty()) {
+        QString message;
+        if (isMyMove) {
+            message = QString("🎯 You sunk opponent's %1!").arg(shipName);
+            statusLabel->setText(message);
+            QMessageBox::information(this, "Ship Sunk!", 
+                QString("Congratulations! You destroyed the enemy's %1!").arg(shipName));
+        } else {
+            message = QString("💥 Opponent sunk your %1!").arg(shipName);
+            statusLabel->setText(message);
+            QMessageBox::warning(this, "Ship Lost!", 
+                QString("Your %1 has been destroyed!").arg(shipName));
+        }
     }
 }
 
@@ -524,9 +545,10 @@ bool GameWidget::canPlaceShip(int row, int col, int size, bool horizontal) {
     return true;
 }
 
-void GameWidget::placeShip(int row, int col, int size, bool horizontal) {
+void GameWidget::placeShip(int row, int col, int size, bool horizontal, int shipIndex) {
     int shipId = placedShips.size() + 1;
-    QColor color = availableShips[currentShipIndex].color;
+    int idx = (shipIndex >= 0) ? shipIndex : currentShipIndex;
+    QColor color = availableShips[idx].color;
     
     QString styleSheet = QString("background-color: rgb(%1, %2, %3); border: 1px solid black;")
                              .arg(color.red())
@@ -610,4 +632,93 @@ void GameWidget::updateOpponentPing(int ping) {
     
     opponentPingLabel->setText(QString("Ping: %1ms").arg(ping));
     opponentPingLabel->setStyleSheet(QString("color: %1;").arg(color));
+}
+
+void GameWidget::onRandomPlaceClicked() {
+    clearAllShips();
+    randomPlaceShips();
+}
+
+void GameWidget::clearAllShips() {
+    // Clear all ships from board
+    for (int row = 0; row < 10; ++row) {
+        for (int col = 0; col < 10; ++col) {
+            if (myBoard[row][col] > 0) {
+                myCells[row][col]->setStyleSheet("background-color: lightblue; border: 1px solid gray;");
+                myCells[row][col]->setText("");
+                myBoard[row][col] = 0;
+            }
+        }
+    }
+    
+    // Clear placed ships list
+    placedShips.clear();
+    
+    // Re-enable all ship list items
+    for (int i = 0; i < shipList->count(); ++i) {
+        QListWidgetItem* item = shipList->item(i);
+        item->setFlags(item->flags() | Qt::ItemIsEnabled);
+        QFont font = item->font();
+        font.setStrikeOut(false);
+        item->setFont(font);
+    }
+    
+    // Disable ready button
+    readyButton->setEnabled(false);
+    currentShipIndex = -1;
+}
+
+void GameWidget::randomPlaceShips() {
+    // Seed random number generator
+    srand(time(nullptr));
+    
+    for (int shipIdx = 0; shipIdx < availableShips.size(); ++shipIdx) {
+        Ship ship = availableShips[shipIdx];
+        bool placed = false;
+        int attempts = 0;
+        const int maxAttempts = 100;
+        
+        while (!placed && attempts < maxAttempts) {
+            // Random position and orientation
+            int row = rand() % 10;
+            int col = rand() % 10;
+            bool horizontal = (rand() % 2) == 0;
+            
+            if (canPlaceShip(row, col, ship.size, horizontal)) {
+                placeShip(row, col, ship.size, horizontal, shipIdx);
+                
+                // Save ship placement
+                QJsonObject shipData;
+                shipData["name"] = ship.name;
+                shipData["size"] = ship.size;
+                shipData["row"] = row;
+                shipData["col"] = col;
+                shipData["horizontal"] = horizontal;
+                placedShips.append(shipData);
+                
+                // Mark ship as placed in list
+                QListWidgetItem* item = shipList->item(shipIdx);
+                item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+                QFont font = item->font();
+                font.setStrikeOut(true);
+                item->setFont(font);
+                
+                placed = true;
+            }
+            
+            attempts++;
+        }
+        
+        if (!placed) {
+            // Failed to place this ship, clear all and try again
+            qDebug() << "Failed to place" << ship.name << "- retrying all ships";
+            clearAllShips();
+            randomPlaceShips();
+            return;
+        }
+    }
+    
+    // All ships placed successfully
+    readyButton->setEnabled(true);
+    statusLabel->setText("All ships randomly placed! Click Ready when you're ready.");
 }

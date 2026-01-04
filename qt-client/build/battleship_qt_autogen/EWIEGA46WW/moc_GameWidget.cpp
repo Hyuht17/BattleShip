@@ -28,7 +28,7 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 namespace {
 struct qt_meta_stringdata_GameWidget_t {
-    uint offsetsAndSizes[42];
+    uint offsetsAndSizes[44];
     char stringdata0[11];
     char stringdata1[12];
     char stringdata2[1];
@@ -49,7 +49,8 @@ struct qt_meta_stringdata_GameWidget_t {
     char stringdata17[6];
     char stringdata18[21];
     char stringdata19[21];
-    char stringdata20[18];
+    char stringdata20[21];
+    char stringdata21[18];
 };
 #define QT_MOC_LITERAL(ofs, len) \
     uint(sizeof(qt_meta_stringdata_GameWidget_t::offsetsAndSizes) + ofs), len 
@@ -75,7 +76,8 @@ Q_CONSTINIT static const qt_meta_stringdata_GameWidget_t qt_meta_stringdata_Game
         QT_MOC_LITERAL(235, 5),  // "index"
         QT_MOC_LITERAL(241, 20),  // "onOrientationChanged"
         QT_MOC_LITERAL(262, 20),  // "onReadyButtonClicked"
-        QT_MOC_LITERAL(283, 17)   // "onSendChatClicked"
+        QT_MOC_LITERAL(283, 20),  // "onRandomPlaceClicked"
+        QT_MOC_LITERAL(304, 17)   // "onSendChatClicked"
     },
     "GameWidget",
     "moveClicked",
@@ -97,6 +99,7 @@ Q_CONSTINIT static const qt_meta_stringdata_GameWidget_t qt_meta_stringdata_Game
     "index",
     "onOrientationChanged",
     "onReadyButtonClicked",
+    "onRandomPlaceClicked",
     "onSendChatClicked"
 };
 #undef QT_MOC_LITERAL
@@ -108,7 +111,7 @@ Q_CONSTINIT static const uint qt_meta_data_GameWidget[] = {
       10,       // revision
        0,       // classname
        0,    0, // classinfo
-      13,   14, // methods
+      14,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -116,21 +119,22 @@ Q_CONSTINIT static const uint qt_meta_data_GameWidget[] = {
        5,       // signalCount
 
  // signals: name, argc, parameters, tag, flags, initial metatype offsets
-       1,    2,   92,    2, 0x06,    1 /* Public */,
-       5,    0,   97,    2, 0x06,    4 /* Public */,
-       6,    0,   98,    2, 0x06,    5 /* Public */,
-       7,    1,   99,    2, 0x06,    6 /* Public */,
-      10,    1,  102,    2, 0x06,    8 /* Public */,
+       1,    2,   98,    2, 0x06,    1 /* Public */,
+       5,    0,  103,    2, 0x06,    4 /* Public */,
+       6,    0,  104,    2, 0x06,    5 /* Public */,
+       7,    1,  105,    2, 0x06,    6 /* Public */,
+      10,    1,  108,    2, 0x06,    8 /* Public */,
 
  // slots: name, argc, parameters, tag, flags, initial metatype offsets
-      12,    2,  105,    2, 0x08,   10 /* Private */,
-      13,    2,  110,    2, 0x08,   13 /* Private */,
-      14,    0,  115,    2, 0x08,   16 /* Private */,
-      15,    0,  116,    2, 0x08,   17 /* Private */,
-      16,    1,  117,    2, 0x08,   18 /* Private */,
-      18,    0,  120,    2, 0x08,   20 /* Private */,
-      19,    0,  121,    2, 0x08,   21 /* Private */,
-      20,    0,  122,    2, 0x08,   22 /* Private */,
+      12,    2,  111,    2, 0x08,   10 /* Private */,
+      13,    2,  116,    2, 0x08,   13 /* Private */,
+      14,    0,  121,    2, 0x08,   16 /* Private */,
+      15,    0,  122,    2, 0x08,   17 /* Private */,
+      16,    1,  123,    2, 0x08,   18 /* Private */,
+      18,    0,  126,    2, 0x08,   20 /* Private */,
+      19,    0,  127,    2, 0x08,   21 /* Private */,
+      20,    0,  128,    2, 0x08,   22 /* Private */,
+      21,    0,  129,    2, 0x08,   23 /* Private */,
 
  // signals: parameters
     QMetaType::Void, QMetaType::Int, QMetaType::Int,    3,    4,
@@ -145,6 +149,7 @@ Q_CONSTINIT static const uint qt_meta_data_GameWidget[] = {
     QMetaType::Void,
     QMetaType::Void,
     QMetaType::Void, QMetaType::Int,   17,
+    QMetaType::Void,
     QMetaType::Void,
     QMetaType::Void,
     QMetaType::Void,
@@ -194,6 +199,8 @@ Q_CONSTINIT const QMetaObject GameWidget::staticMetaObject = { {
         QtPrivate::TypeAndForceComplete<void, std::false_type>,
         // method 'onReadyButtonClicked'
         QtPrivate::TypeAndForceComplete<void, std::false_type>,
+        // method 'onRandomPlaceClicked'
+        QtPrivate::TypeAndForceComplete<void, std::false_type>,
         // method 'onSendChatClicked'
         QtPrivate::TypeAndForceComplete<void, std::false_type>
     >,
@@ -218,7 +225,8 @@ void GameWidget::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 9: _t->onShipSelected((*reinterpret_cast< std::add_pointer_t<int>>(_a[1]))); break;
         case 10: _t->onOrientationChanged(); break;
         case 11: _t->onReadyButtonClicked(); break;
-        case 12: _t->onSendChatClicked(); break;
+        case 12: _t->onRandomPlaceClicked(); break;
+        case 13: _t->onSendChatClicked(); break;
         default: ;
         }
     } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
@@ -291,13 +299,13 @@ int GameWidget::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 13)
+        if (_id < 14)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 13;
+        _id -= 14;
     } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 13)
+        if (_id < 14)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 13;
+        _id -= 14;
     }
     return _id;
 }

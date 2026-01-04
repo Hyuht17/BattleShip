@@ -337,9 +337,9 @@ void MainWindow::handleMessage(const QJsonObject& msg) {
             bool sunk = !shipSunk.isEmpty();
             
             qDebug() << "MOVE_RESULT: coord=" << coord << "row=" << row << "col=" << col 
-                     << "result=" << result << "sunk=" << sunk << "isYourShot=" << isYourShot;
+                     << "result=" << result << "sunk=" << sunk << "shipName=" << shipSunk << "isYourShot=" << isYourShot;
             
-            gameWidget->updateMove(row, col, hit, sunk, isYourShot);
+            gameWidget->updateMove(row, col, hit, sunk, isYourShot, shipSunk);
         }
         
     } else if (messageType == "OPPONENT_MOVE") {

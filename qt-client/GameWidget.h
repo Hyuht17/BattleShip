@@ -31,7 +31,7 @@ public:
     void showWaitingMessage(const QString& message);
     void setYourTurn(bool isTurn);
     void activateGame(); // Kích hoạt game sau khi cả 2 đặt thuyền xong
-    void updateMove(int row, int col, bool hit, bool sunk, bool isMyMove);
+    void updateMove(int row, int col, bool hit, bool sunk, bool isMyMove, const QString& shipName = "");
     void showGameOver(const QString& winner, const QString& reason, int eloChange);
     void addChatMessage(const QString& sender, const QString& message);
     void updateMyPing(int ping);
@@ -52,6 +52,7 @@ private slots:
     void onShipSelected(int index);
     void onOrientationChanged();
     void onReadyButtonClicked();
+    void onRandomPlaceClicked();
     void onSendChatClicked();
     
 private:
@@ -60,7 +61,9 @@ private:
     void clearBoards();
     void setupShipPlacementUI();
     bool canPlaceShip(int row, int col, int size, bool horizontal);
-    void placeShip(int row, int col, int size, bool horizontal);
+    void placeShip(int row, int col, int size, bool horizontal, int shipIndex = -1);
+    void randomPlaceShips();
+    void clearAllShips();
     
     QLabel* playerLabel;
     QLabel* myPingLabel;
@@ -82,6 +85,7 @@ private:
     QRadioButton* horizontalRadio;
     QRadioButton* verticalRadio;
     QPushButton* readyButton;
+    QPushButton* randomButton;
     QButtonGroup* orientationGroup;
     
     // Ship data
